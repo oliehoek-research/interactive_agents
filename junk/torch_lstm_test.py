@@ -16,6 +16,7 @@ class MemoryGame(gym.Env):
     def __init__(self, length=5, num_cues=2, noise=0.1):
         self.observation_space = Box(0, 2, shape=(num_cues + 2,))
         self.action_space = Discrete(num_cues)
+        # TODO: Test if "length" is a list and randomize length if it is
         self._length = length
         self._num_cues = num_cues 
         self._noise = noise       
@@ -143,8 +144,14 @@ class LSTMNet(nn.Module):
         self._linear = nn.Linear(lstm_size, output_size)
         self._lstm_size = lstm_size
 
-    def forward(self, obs, hidden):
-        out, hidden = self._lstm(obs, hidden)
+    def forward(self, obs, hidden, seq_lens):
+        if seq_lens is None:
+            out, hidden = self._lstm(obs, hidden)
+        else:
+            obs = nn.utils.rnn.pack_padded_sequence(obs, seq_lens, enforce_sorted=False)
+            out, hidden = self._lstm(obs, hidden)
+            out = nn.utils.rnn.pad_packed_sequence(out)
+
         out = self._linear(out)
 
         return out, hidden
@@ -176,9 +183,9 @@ class GRUNet(nn.Module):
 
 
 if __name__ == "__main__":
-    env = MemoryGame(20, 4)
-    num_demonstrations = 512
-    batch_size = 16
+    env = MemoryGame(15, 4)
+    num_demonstrations = 1024
+    batch_size = 32
     hidden_size = 10
     training_epochs = 5000
     eval_episodes = 100
@@ -199,13 +206,13 @@ if __name__ == "__main__":
     print(f"    success rate: {success_rate * 100}%")
 
     print("\n===== Training =====")
-    optimizer = Adam(model.parameters(), lr=0.0001)
+    optimizer = Adam(model.parameters(), lr=0.001)
     initial_hidden = model.initial_hidden(batch_size)
 
     for epoch in range(training_epochs):
         obs_batch, action_batch, _ = buffer.sample(batch_size)
         optimizer.zero_grad()
-        logits, _ = model(obs_batch, initial_hidden)
+        logits, _ = model(obs_batch, initial_hidden, seq_lens)
         dist = nn.functional.softmax(logits, -1)
         loss = -torch.mean(dist * action_batch)
         loss.backward()
