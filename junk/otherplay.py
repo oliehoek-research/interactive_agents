@@ -1,5 +1,5 @@
 # NOTE: Copied from: https://colab.research.google.com/drive/19O0Uv6K2I3FZZqTL6tuNr2gpJbAMC854#scrollTo=pb1MI1eYKox9
-# NOTE: Simple script applying otherplay to the coordination game - not sufficient for the linguistic coordination repeated game - just uses a stateless action distribution
+# NOTE: Simple script applying otherplay to the coordination game
 
 import torch  # NOTE: All their code uses pytorch
 from os import path
@@ -13,7 +13,7 @@ import numpy as np
 import pandas as pd
 
 import matplotlib.pyplot as plt
-%matplotlib inline
+# %matplotlib inline  # NOTE: This is only used when run as a jupyter notebook
 
 from itertools import product
 
@@ -23,14 +23,14 @@ from google.colab import files
 # NOTE: Seems to construct the payoff matrix for the coordination game
 def get_payoff_values(n_dim, shuffle):
     payoff_values =torch.zeros(n_dim, n_dim, requires_grad=False)  # NOTE: Initialize N x N matrix of zeros
-    payoff_values[0,0]=0.9  # NOTE: This seems to be the focal point (unique low-scoring action)
+    payoff_values[0,0]=0.9  # NOTE: Sets the focal point (unique low-scoring action) as action 0
     if shuffle:
-        perm = np.random.permutation(range(1,n_dim))  # NOTE: Optionally permute the payoff matrix - seems to be how they implement otherplay in this setting
-    else:
+        perm = np.random.permutation(range(1,n_dim))  # NOTE: Optionally permute the payoff matrix (other than 0) - seems to be how they implement otherplay in this setting
+    else: # NOTE: Null permutation
         perm = np.array(range(1, n_dim ))
         perm = np.concatenate([np.zeros(1,dtype=int), perm])
     for s in range(1,n_dim):
-        payoff_values[s,perm[s]] += 1.0  # NOTE: Set payoffs for all other actions to 1
+        payoff_values[s,perm[s]] += 1.0  # NOTE: permute the columns and set non-unique values to 1
     return payoff_values
 
 
@@ -38,21 +38,21 @@ def entropy(pi):  # NOTE: Pretty self explanatory, computes the Shannon entropy 
     return -(torch.log(pi)*pi).sum()
 
 
-def get_theta(dims, std_val):  # NOTE: What does this do?
+def get_theta(dims, std_val):  # NOTE: Generates a matrix with uniform random values with zero mean and the given standard deviation
     return init.normal_(torch.zeros(dims[0], dims[1], requires_grad=True), std=std_val)
 
 
-def get_thetas(n_dim, std_val, JAL):  # NOTE: What does this do?
-    if JAL:
+def get_thetas(n_dim, std_val, JAL):
+    if JAL:  # NOTE: What does JAL stand for?
         dims =[n_dim**2, 1]
         theta= get_theta(dims,std_val)
-        return theta
+        return theta  # NOTE: Generate a single random vector size n_dim x n_dim
     dims =[n_dim, 1]
-    return [get_theta(dims,std_val) for _ in [0,1]]
+    return [get_theta(dims,std_val) for _ in [0,1]]  # NOTE: Generate two normal random vectors of size n_dim
   
 
-def get_objective(thetas_dec, payoff_values, l_pen, JAL):  # NOTE: Computes the payoff for a given set of logits
-    if JAL:
+def get_objective(thetas_dec, payoff_values, l_pen, JAL):  # NOTE: Computes the payoff for a given set of action logits
+    if JAL:  # NOTE: This first section constructs a joint action distribution from the given probability logits
         p1 = torch.softmax(thetas_dec,0) 
         p_s_comma_a = torch.reshape(p1, [int(p1.shape[0]**0.5), -1] )  # NOTE: Computes a joint distribution directly - JAL seems to refer to learning a correlated solution
     else:
@@ -67,11 +67,11 @@ def get_objective(thetas_dec, payoff_values, l_pen, JAL):  # NOTE: Computes the 
     r2 = r1
     rewards = [r1, r2] 
     losses = [-r1, -r2]
-    return rewards, losses
+    return rewards, losses  # NOTE: Both agents observe the same rewards and losses (fully cooperative)
 
 
 def train_policy(thetas_dec, JAL, other_play, l_pen, t_max, optim, lr ):
-    payoff_values = get_payoff_values(n_dim, other_play)  # NOTE: Seems to construct a single instance of the coordination game
+    payoff_values = get_payoff_values(n_dim, other_play)  # NOTE: Seems to construct a single instance of the coordination game - randomized if otherplay is used
     returns = np.zeros((t_max))  # NOTE: Stores a history of returns up to thr max numbers of epsodes
 
     # NOTE: Initialize optimizers

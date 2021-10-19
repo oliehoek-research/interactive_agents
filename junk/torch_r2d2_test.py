@@ -99,7 +99,7 @@ class R2D2:
                 env, 
                 num_episodes=8, 
                 buffer_size=2048,
-                batch_size=64,
+                batch_size=4,
                 num_batches=4,
                 sync_interval=4,
                 epsilon=0.05,
@@ -179,7 +179,7 @@ class R2D2:
             self._replay_buffer.add(observations, actions, rewards, dones)
 
         for _ in range(self._num_batches):
-            batch = self._replay_buffer.sample(self._num_batches)
+            batch = self._replay_buffer.sample(self._batch_size)
             self._optimizer.zero_grad()
             loss = self._loss(*batch).mean()
             loss.backward()
@@ -244,8 +244,7 @@ class MemoryGame(gym.Env):
 
 
 class CoordinationGame(gym.Env):
-    '''An instance of the memory game with noisy observations'''
-
+    
     class Fixed:
         
         def __init__(self, actions):
