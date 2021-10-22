@@ -1,5 +1,6 @@
 # NOTE: Copied from: https://colab.research.google.com/drive/19O0Uv6K2I3FZZqTL6tuNr2gpJbAMC854#scrollTo=pb1MI1eYKox9
 # NOTE: Simple script applying otherplay to the coordination game
+# NOTE: For which player is the otherplay transform applied?
 
 import torch  # NOTE: All their code uses pytorch
 from os import path
@@ -30,7 +31,7 @@ def get_payoff_values(n_dim, shuffle):
         perm = np.array(range(1, n_dim ))
         perm = np.concatenate([np.zeros(1,dtype=int), perm])
     for s in range(1,n_dim):
-        payoff_values[s,perm[s]] += 1.0  # NOTE: permute the columns and set non-unique values to 1
+        payoff_values[s,perm[s]] += 1.0  # NOTE: permute the columns and set non-unique values to 1 - permuting the columns means that the second player is transformed
     return payoff_values
 
 

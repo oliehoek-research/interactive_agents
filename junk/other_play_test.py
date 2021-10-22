@@ -5,7 +5,6 @@ import gym
 from gym.spaces import Discrete, Box
 import numpy as np
 import torch
-from torch._C import TensorType
 from torch.functional import Tensor
 import torch.nn as nn
 from torch.optim import Adam
@@ -196,7 +195,7 @@ class SimultaneousPlay:
 
             obs = self._env.reset()
             append(obs, observations)
-            done = {0:False}
+            done = {None: False}
 
             while not all(done.values()):
                 action = {}
@@ -227,6 +226,10 @@ class CoordinationGame(gym.Env):
         self._num_rounds = config.get("rounds", 5)
         self._num_actions = config.get("actions", 8)
         self._num_players = config.get("players", 2)
+        self._shuffle = config.get("shuffle", False)
+        self._focal_point = config.get("focal_point", False)
+        self._focal_payoff = config.get("focal_payoff", 0.9)
+        self._payoff_noise = config.get("payoff_noise", 0.0)
 
         self._obs_size = self._num_actions * (self._num_players - 1)
 
@@ -238,88 +241,72 @@ class CoordinationGame(gym.Env):
             self.action_space[pid] = Discrete(self._num_actions)
         
         self._current_round = 0
+        self._forward_permutations = None
+        self._backward_permutations = None
+
+    def _new_permutations(self):
+        self._forward_permutations = {}
+        self._backward_permutations = {}
+        
+        for pid in range(self._num_players):
+            if self._focal_point:
+                forward = 1 + np.random.permutation(self._num_actions - 1)
+                forward = np.concatenate([np.zeros(1,dtype=np.int64), forward])
+            else:
+                forward = np.random.permutation(self._num_actions)
+
+            backward = np.zeros(self._num_actions, dtype=np.int64)
+            for idx in range(self._num_actions):
+                backward[forward[idx]] = idx
+
+            self._forward_permutations[pid] = forward
+            self._backward_permutations[pid] = backward
 
     def reset(self):
         self._current_round = 0
-        obs = {}
 
+        if self._shuffle:
+            self._new_permutations()
+
+        obs = {}
         for pid in range(self._num_players):
             obs[pid] = np.zeros(self._obs_size)
 
         return obs
 
     def step(self, actions):
-        obs = {}
+        if self._shuffle:
+            for pid in range(self._num_players):
+                actions[pid] = self._forward_permutations[pid][actions[pid]]
 
+        obs = {}
         for pid in range(self._num_players):
-            p_obs = np.zeros(self._obs_size)
+            obs[pid] = np.zeros(self._obs_size)
             index = 0
 
             for id, action in actions.items():
                 if pid != id:
-                    p_obs[index + action] = 1
+                    if self._shuffle:
+                        action = self._backward_permutations[pid][action]
+                    obs[pid][index + action] = 1
                     index += self._num_actions
 
-            obs[pid] = p_obs.reshape(self._obs_size)
-
-        reward = 1 if all(a == actions[0] for a in actions.values()) else 0
+        if self._focal_point and all(a == 0 for a in actions.values()):
+            reward = self._focal_payoff
+        elif all(a == actions[0] for a in actions.values()):
+            reward = 1 + self._payoff_noise * np.random.normal()
+        else:
+            reward = 0 + self._payoff_noise * np.random.normal()
         rewards = {pid:reward for pid in range(self._num_players)}
+
+        # print(f"ACTIONS: {actions}")
+        # print(f"REWARD: {reward}")
 
         self._current_round += 1
         done = self._num_rounds <= self._current_round
         dones = {pid:done for pid in range(self._num_players)}
 
         infos = {pid:None for pid in range(self._num_players)}
-
-        return obs, rewards, dones, infos
-
-
-class PermutationEnv:
-
-    def __init__(self, env):
-        self._env = env
-        self.observation_space = env.observation_space
-        self.action_space = env.action_space
-        self._action_permutations = None
-        self._observation_permutations = None
-
-    def _permute_observation(self, obs):
-        for key in obs.keys():
-            if obs[key].max() > 0:  # Initial observation will be all zeros, so don't permute
-                idx = np.argmax(obs[key])
-                obs[key][idx] = 0
-                idx = self._observation_permutations[key][idx]
-                obs[key][idx] = 1
-        
-        return obs
-
-    def _permute_action(self, action):
-        for key, value in action.items():
-            action[key] = self._action_permutations[key][value]
-        
-        return action
-
-    def reset(self):
-        obs = self._env.reset()
-
-        self._action_permutations = {}
-        self._observation_permutations = {}
-        for id, action_space in self._env.action_space.items():
-            forward = np.random.permutation(action_space.n)
-            backwards = np.zeros(action_space.n, dtype=np.int64)
-
-            for idx in range(action_space.n):
-                backwards[forward[idx]] = idx
-
-            self._action_permutations[id] = forward
-            self._observation_permutations[id] = backwards
-
-        return self._permute_observation(obs)
-    
-    def step(self, action):
-        action = self._permute_action(action)
-        obs, rewards, dones, infos = self._env.step(action)
-        obs = self._permute_observation(obs)
 
         return obs, rewards, dones, infos
 
@@ -342,7 +329,6 @@ def cross_evaluate(env, populations, num_episodes=10):
     returns = np.zeros(tuple([num_populations] * num_agents))
 
     for permutation in permutations(num_agents, num_populations):
-        print(f"permuation: {permutation}")
         policies = {}
         for id, p in enumerate(permutation):
             agent_id = agent_ids[id]
@@ -373,14 +359,95 @@ def cross_evaluate(env, populations, num_episodes=10):
     return returns
 
 
-if __name__ == "__main__":
-    env = CoordinationGame(config={
-        "rounds": 10,
-        "actions": 10
+def tests():
+    print("===== Testing Coordination Env =====")
+    env = CoordinationGame( {
+        "rounds": 1,
+        "actions": 5,
+        "shuffle": False,
+        "focal_point": False,
     })
 
-    train_env = env
-    # train_env = PermutationEnv(train_env)
+    print("Fixed Payoff Matrix:")
+    M = np.zeros((5,5,))
+    env.reset()
+
+    for a in range(5):
+        for b in range(5):
+            _, reward, _, _ = env.step({0:a, 1:b})
+            M[a,b] = reward[0] + reward[1]
+    
+    print(M)
+
+    for a in range(5):
+        for b in range(5):
+            env.reset()
+            obs, reward, _, _ = env.step({0:a, 1:b})
+            
+            assert obs[0].max() > 0 and obs[1].max() > 0, f"actions not properly encoded, (observation: {obs})"
+            ob = obs[0].argmax()
+            oa = obs[1].argmax()
+            assert oa == a and ob == b, f"actions not properly encoded, (observation: {obs})"
+
+            if a == b:
+                assert all([1 == r for r in reward.values()]), f"identical actions did not receive a payoff of 1, (actions: {[a,b]}, payoff: {reward})"
+            else:
+                assert all([0 == r for r in reward.values()]), f"distinct actions did not receive a payoff of 0, (actions: {[a,b]}, payoff: {reward})"
+
+    env = CoordinationGame( {
+        "rounds": 1,
+        "actions": 5,
+        "shuffle": True,
+        "focal_point": True,
+        "focal_payoff": .8,
+    })
+
+    print("Shuffled Payoff Matrix:")
+    M = np.zeros((5,5,))
+    env.reset()
+
+    for a in range(5):
+        for b in range(5):
+            _, reward, _, _ = env.step({0:a, 1:b})
+            M[a,b] = reward[0] + reward[1]
+    
+    print(M)
+
+    for _ in range(100):
+        env.reset()
+        _, reward, _, _ = env.step({0:0, 1:0})
+        assert all([.8 == r for r in reward.values()]), f"focal point did not receive correct payoff, (payoff: {reward})"
+    
+    for _ in range(100):
+        for a in range(5):
+            for b in range(5):
+                env.reset()
+                obs, reward, _, _ = env.step({0:a, 1:b})
+                ob = obs[0].argmax()
+                oa = obs[1].argmax()
+                if ob == a:
+                    assert all([r > 0 for r in reward.values()]), f"coordination did not yield positive reward (actions: {[a,b]}, payoff: {reward}, observation: {obs})"
+                if oa == b:
+                    assert all([r > 0 for r in reward.values()]), f"coordination did not yield positive reward (actions: {[a,b]}, payoff: {reward}, observation: {obs})"
+
+    print("Passed")
+
+
+# NOTE: Short answer, need something better than independent training for this to work reliably
+if __name__ == "__main__":
+    # tests()
+    # exit()
+
+    env_config = {
+        "rounds": 1,
+        "actions": 3,
+        "focal_point": True,
+        "focal_payoff": 10.0,
+        # "payoff_noise": 1.0,
+    }
+
+    test_env = CoordinationGame(env_config)
+    train_env = CoordinationGame(env_config)
 
     training_epochs = 100
     num_populations = 2
@@ -405,7 +472,7 @@ if __name__ == "__main__":
         
         populations.append(learners)
     
-    jpc = cross_evaluate(env, populations)
+    jpc = cross_evaluate(test_env, populations)
 
     print(f"\n===== Joint Policy Correlation Matrix =====")
     print(jpc)
