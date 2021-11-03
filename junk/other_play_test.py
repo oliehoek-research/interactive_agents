@@ -5,7 +5,6 @@ import gym
 from gym.spaces import Discrete, Box
 import numpy as np
 import torch
-from torch.functional import Tensor
 import torch.nn as nn
 from torch.optim import Adam
 
@@ -151,6 +150,9 @@ class R2D2:
 
     def learn(self, obs, actions, rewards, dones):
 
+        # Convert obs list to 2D array
+        obs = np.stack(obs)
+
         # Add latest episode to replay buffer
         self._replay_buffer.add(obs, actions, rewards, dones)
         self._episodes += 1
@@ -277,7 +279,8 @@ class CoordinationGame(gym.Env):
     def step(self, actions):
         if self._shuffle:
             for pid in range(self._num_players):
-                actions[pid] = self._forward_permutations[pid][actions[pid]]
+                if 0 != pid:  # NOTE: True other-play
+                    actions[pid] = self._forward_permutations[pid][actions[pid]]
 
         obs = {}
         for pid in range(self._num_players):
@@ -287,7 +290,8 @@ class CoordinationGame(gym.Env):
             for id, action in actions.items():
                 if pid != id:
                     if self._shuffle:
-                        action = self._backward_permutations[pid][action]
+                        if 0 != pid:  # NOTE: True other-play
+                            action = self._backward_permutations[pid][action]
                     obs[pid][index + action] = 1
                     index += self._num_actions
 
@@ -299,9 +303,6 @@ class CoordinationGame(gym.Env):
             reward = 0 + self._payoff_noise * np.random.normal()
         rewards = {pid:reward for pid in range(self._num_players)}
 
-        # print(f"ACTIONS: {actions}")
-        # print(f"REWARD: {reward}")
-
         self._current_round += 1
         done = self._num_rounds <= self._current_round
         dones = {pid:done for pid in range(self._num_players)}
@@ -309,6 +310,79 @@ class CoordinationGame(gym.Env):
         infos = {pid:None for pid in range(self._num_players)}
 
         return obs, rewards, dones, infos
+
+
+class StaticAgent:
+
+    def __init__(self, num_actions):
+        self._num_actions = num_actions
+        self._action = 0
+
+    def reset(self):
+        self._action = np.random.randint(0, self._num_actions)
+
+    def act(self, obs):
+        return self._action
+
+
+class ReactiveAgent:
+
+    def __init__(self, num_actions):
+        self._num_actions = num_actions
+
+    def reset(self):
+        pass
+
+    def act(self, obs):
+        if obs.max().item() < 1:
+            return np.random.randint(self._num_actions)
+
+        return obs.argmax().item()
+
+
+class FictitiousAgent:
+
+    def __init__(self, num_actions):
+        self._num_actions = num_actions
+        self._counts = None
+
+    def reset(self):
+        self._counts = np.zeros(self._num_actions)
+
+    def act(self, obs):
+        if obs.max().item() < 1:
+            return np.random.randint(self._num_actions)
+
+        self._counts[obs.argmax().item()] += 1
+        return self._counts.argmax()
+
+
+def evaluate(env, policies, num_episodes=10):
+    returns = 0
+
+    for _ in range(num_episodes):
+        total_reward = defaultdict(lambda: 0)
+
+        for policy in policies.values():
+            policy.reset()
+
+        obs = env.reset()
+        done = {0: False}
+
+        while not all(done.values()):
+            action = {}
+            for id, policy in policies.items():
+                action[id] = policies[id].act(torch.as_tensor(obs[id], dtype=torch.float32))
+
+            obs, reward, done, _ = env.step(action)
+
+            for id, rew in reward.items():
+                total_reward[id] += rew
+
+        for rew in total_reward.values():
+            returns += rew
+
+    return returns / num_episodes
 
 
 def cross_evaluate(env, populations, num_episodes=10):
@@ -361,7 +435,7 @@ def cross_evaluate(env, populations, num_episodes=10):
 
 def tests():
     print("===== Testing Coordination Env =====")
-    env = CoordinationGame( {
+    env = CoordinationGame({
         "rounds": 1,
         "actions": 5,
         "shuffle": False,
@@ -394,7 +468,7 @@ def tests():
             else:
                 assert all([0 == r for r in reward.values()]), f"distinct actions did not receive a payoff of 0, (actions: {[a,b]}, payoff: {reward})"
 
-    env = CoordinationGame( {
+    env = CoordinationGame({
         "rounds": 1,
         "actions": 5,
         "shuffle": True,
@@ -439,18 +513,18 @@ if __name__ == "__main__":
     # exit()
 
     env_config = {
-        "rounds": 1,
-        "actions": 3,
-        "focal_point": True,
-        "focal_payoff": 10.0,
-        # "payoff_noise": 1.0,
+        "rounds": 10,
+        "actions": 10,
     }
 
     test_env = CoordinationGame(env_config)
-    train_env = CoordinationGame(env_config)
+    train_env = CoordinationGame({
+        "shuffle": False,
+        **env_config
+    })
 
-    training_epochs = 100
-    num_populations = 2
+    training_epochs = 50
+    num_populations = 5
 
     populations = []
 
@@ -459,9 +533,21 @@ if __name__ == "__main__":
 
         learners = {}
         for id in train_env.observation_space.keys():
-            learners[id] = R2D2(train_env.observation_space[id], train_env.action_space[id])
+            learners[id] = R2D2(train_env.observation_space[id],
+                                train_env.action_space[id],
+                                learn_interval=1,
+                                sync_interval=64,
+                                buffer_size=2048,
+                                batch_size=4,
+                                epsilon=0.1,
+                                gamma=0.99,
+                                beta=0.5,
+                                lr=0.0001,
+                                hidden_size=64,
+                                hidden_layers=1,
+                                deuling=True)
         
-        trainer = SimultaneousPlay(train_env, learners)
+        trainer = SimultaneousPlay(train_env, learners, num_episodes=64)
 
         for epoch in range(training_epochs):
             print(f"\n----- Epoch {epoch + 1} -----")
@@ -476,3 +562,39 @@ if __name__ == "__main__":
 
     print(f"\n===== Joint Policy Correlation Matrix =====")
     print(jpc)
+
+    print(f"\n===== Static Agent Eval =====")
+    agent = StaticAgent(test_env.action_space[0].n)
+    total_reward = 0
+
+    for id, population in enumerate(populations):
+        reward = evaluate(test_env, {0: population[0], 1: agent}) / 2
+        reward += evaluate(test_env, {0: agent, 1: population[1]}) / 2
+        print(f"Population {id}: {reward}")
+        total_reward += reward
+
+    print(f"Mean Return: {total_reward / num_populations}")
+
+    print(f"\n===== Reactive Agent Eval =====")
+    agent = ReactiveAgent(test_env.action_space[0].n)
+    total_reward = 0
+
+    for id, population in enumerate(populations):
+        reward = evaluate(test_env, {0: population[0], 1: agent}) / 2
+        reward += evaluate(test_env, {0: agent, 1: population[1]}) / 2
+        print(f"Population {id}: {reward}")
+        total_reward += reward
+
+    print(f"Mean Return: {total_reward / num_populations}")
+
+    print(f"\n===== Fictitious-Play Agent Eval =====")
+    agent = FictitiousAgent(test_env.action_space[0].n)
+    total_reward = 0
+
+    for id, population in enumerate(populations):
+        reward = evaluate(test_env, {0: population[0], 1: agent}) / 2
+        reward += evaluate(test_env, {0: agent, 1: population[1]}) / 2
+        print(f"Population {id}: {reward}")
+        total_reward += reward
+
+    print(f"Mean Return: {total_reward / num_populations}")
