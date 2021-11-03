@@ -210,7 +210,7 @@ if __name__ == "__main__":
     initial_hidden = model.initial_hidden(batch_size)
 
     for epoch in range(training_epochs):
-        obs_batch, action_batch, _ = buffer.sample(batch_size)
+        obs_batch, action_batch, seq_lens = buffer.sample(batch_size)
         optimizer.zero_grad()
         logits, _ = model(obs_batch, initial_hidden, seq_lens)
         dist = nn.functional.softmax(logits, -1)
