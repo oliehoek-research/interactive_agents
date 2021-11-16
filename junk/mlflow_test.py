@@ -1,4 +1,5 @@
 """Test of multi-process training with mlflow"""
+import mlflow
 import numpy as np
 import torch
 import torch.nn as nn
@@ -50,7 +51,11 @@ def train(seed, instances, values, num_iterations=1000, config={}):
 
         optimizer.zero_grad()
         loss = (value_batch - model(instance_batch)) ** 2
-        loss.mean().backward()
+        loss = loss.mean()
+
+        mlflow.log_metric("error", loss.item())
+
+        loss.backward()
         optimizer.step()
 
     # Evaluate model
@@ -71,5 +76,7 @@ if __name__ == "__main__":
     instances, values = generate_data(lambda x: np.sin(3 * x), 1)
 
     for seed in range(num_runs):
-        error = train(seed, instances, values, num_iterations=200, config=config)
-        print(f"seed {seed}, error: {error}")
+        with mlflow.start_run():
+            mlflow.log_param("seed", seed)
+            error = train(seed, instances, values, num_iterations=200, config=config)
+            print(f"seed {seed}, error: {error}")
