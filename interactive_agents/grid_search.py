@@ -1,13 +1,8 @@
-'''
-Implements grid-search over training configurations.
-'''
-
+'''Implements grid-search over training configurations'''
 from collections import namedtuple
 from copy import deepcopy
-import pandas as pd
 
 Parameter = namedtuple("Parameter", ["key", "value"])
-
 
 def get_parameters(dictionary, base_key=[]):
 

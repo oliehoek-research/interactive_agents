@@ -1,88 +1,87 @@
-import gym
 from gym.spaces import Discrete, Box
 import numpy as np
 
-class CoordinationGame(gym.Env):
-    '''An instance of the memory game with noisy observations'''
+class CoordinationGame:
 
-    class Fixed:
+    def __init__(self, config={}):
+        self._num_stages = config.get("stages", 5)
+        self._num_actions = config.get("actions", 8)
+        self._num_players = config.get("players", 2)
+        self._shuffle = config.get("shuffle", False)
+        self._focal_point = config.get("focal_point", False)
+        self._focal_payoff = config.get("focal_payoff", 0.9)
+        self._noise = config.get("payoff_noise", 0.0)
+
+        self._obs_size = self._num_actions * (self._num_players - 1)
+
+        self.observation_space = {}
+        self.action_space = {}
+
+        for pid in range(self._num_players):
+            self.observation_space[pid] = Box(0, 1, shape=(self._obs_size,))
+            self.action_space[pid] = Discrete(self._num_actions)
         
-        def __init__(self, actions):
-            self._actions = actions
-            self._current_action = None
+        self._current_stage = 0
+        self._forward_permutations = None
+        self._backward_permutations = None
 
-        def reset(self):
-            self._current_action = np.random.randint(self._actions)
-
-        def act(self, opponent_action=None):
-            return self._current_action
-
-    class SelfPlay:
+    def _new_permutations(self):
+        self._forward_permutations = {}
+        self._backward_permutations = {}
         
-        def __init__(self, actions):
-            self._actions = actions
-
-        def reset(self):
-            pass
-
-        def act(self, opponent_action=None):
-            if opponent_action is None:
-                return np.random.randint(self._actions)
-
-            return opponent_action
-
-    class FictitiousPlay:
-        def __init__(self, actions):
-            self._actions = actions
-            self._counts = np.zeros(actions, dtype=np.int32)
-
-        def reset(self):
-            self._counts.fill(0)
-
-        def act(self, opponent_action=None):
-            if opponent_action is None:
-                return np.random.randint(self._actions)
-
-            self._counts[opponent_action] += 1
-            return np.argmax(self._counts)
-
-    def __init__(self, rounds=5, actions=2, partners=['fixed']):
-        self.observation_space = Box(0, 1, shape=(actions,))
-        self.action_space = Discrete(actions)
-        self._rounds = rounds
-
-        self._partners = []
-        for partner in set(partners):
-            if 'fixed' == partner:
-                self._partners.append(self.Fixed(actions))
-            elif 'sp' == partner:
-                self._partners.append(self.SelfPlay(actions))
-            elif 'fp' == partner:
-                self._partners.append(self.FictitiousPlay(actions))
+        for pid in range(self._num_players):
+            if self._focal_point:
+                forward = 1 + np.random.permutation(self._num_actions - 1)
+                forward = np.concatenate([np.zeros(1,dtype=np.int64), forward])
             else:
-                raise ValueError(f"No partner type '{partner}'")
-        
-        self._current_round = 0
-        self._current_partner = None
-        self._opponent_action = None
+                forward = np.random.permutation(self._num_actions)
+
+            backward = np.zeros(self._num_actions, dtype=np.int64)
+            for idx in range(self._num_actions):
+                backward[forward[idx]] = idx
+
+            self._forward_permutations[pid] = forward
+            self._backward_permutations[pid] = backward
 
     def reset(self):
-        self._current_round = 0
-        self._current_partner = np.random.choice(self._partners)
-        self._current_partner.reset()
-        self._opponent_action = None
-        return np.zeros(self.action_space.n)
+        self._current_stage = 0
 
-    def step(self, action):
-        partner_action = self._current_partner.act(self._opponent_action)
-        self._opponent_action = action
+        if self._shuffle:
+            self._new_permutations()
 
-        obs = np.zeros(self.action_space.n)
-        obs[partner_action] = 1
+        obs = {}
+        for pid in range(self._num_players):
+            obs[pid] = np.zeros(self._obs_size)
 
-        reward = 1 if action == partner_action else 0
-        
-        self._current_round += 1
-        done = self._rounds <= self._current_round
-        
-        return obs, reward, done, {}
+        return obs
+
+    def step(self, actions):
+        if self._shuffle:
+            for pid in range(self._num_players):
+                actions[pid] = self._forward_permutations[pid][actions[pid]]
+
+        obs = {}
+        for pid in range(self._num_players):
+            obs[pid] = np.zeros(self._obs_size)
+            index = 0
+
+            for id, action in actions.items():
+                if pid != id:
+                    if self._shuffle:
+                         action = self._backward_permutations[pid][action]
+                    obs[pid][index + action] = 1
+                    index += self._num_actions
+
+        if self._focal_point and all(a == 0 for a in actions.values()):
+            reward = self._focal_payoff
+        elif all(a == actions[0] for a in actions.values()):
+            reward = 1 + self._payoff_noise * np.random.normal()
+        else:
+            reward = 0 + self._payoff_noise * np.random.normal()
+        rewards = {pid:reward for pid in range(self._num_players)}
+
+        self._current_stage += 1
+        done = self._num_stage <= self._current_stage
+        dones = {pid:done for pid in range(self._num_players)}
+
+        return obs, rewards, dones, None

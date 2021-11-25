@@ -1,27 +1,35 @@
-import gym
 from gym.spaces import Discrete, Box
 import numpy as np
 
-class MemoryGame(gym.Env):
-    '''An instance of the memory game with noisy observations'''
+class MemoryGame:
+    '''Multi-agent wrapper for the memory game with noisy observations'''
 
-    def __init__(self, length=5, num_cues=2, noise=0.1):
-        self.observation_space = Box(0, 2, shape=(num_cues + 2,))
-        self.action_space = Discrete(num_cues)
-        self._length = length
-        self._num_cues = num_cues 
-        self._noise = noise       
+    def __init__(self, config, spec_only=False):
+        self._length = config.get("length", 5)
+        self._num_cues = config.get("num_cues", 2)
+        self._noise = config.get("noise", 0)
+
+        self._agent_id = config.get("agent_id", 0)
+        self._obs_shape = (self._num_cues + 2,)
+        self.observation_space = {self._agent_id: Box(0, 2, shape=self._obs_shape)}
+        self.action_space = {self._agent_id: Discrete(self._num_cues)}
+  
         self._current_step = 0
         self._current_cue = 0
 
     def _obs(self):
-        obs = np.random.uniform(0, self._noise, self.observation_space.shape)
+        if 0 == self._noise:
+            obs = np.zeros(self._obs_shape)
+        else:
+            obs = np.random.uniform(0, self._noise, self._obs_shape)
+
         if 0 == self._current_step:
             obs[-2] += 1
             obs[self._current_cue] += 1
         elif self._length == self._current_step:
             obs[-1] += 1
-        return obs
+
+        return {self._agent_id: obs}
 
     def reset(self):
         self._current_step = 0
@@ -31,7 +39,7 @@ class MemoryGame(gym.Env):
     def step(self, action):
         if self._current_step < self._length:
             self._current_step += 1
-            return self._obs(), 0, False, {}
+            return self._obs(), {self._agent_id: 0}, {self._agent_id: False}, None
         else:
             reward = (1 if action == self._current_cue else 0)
-            return self._obs(), reward, True, {}
+            return self._obs(), {self._agent_id: reward}, {self._agent_id: True}, None
