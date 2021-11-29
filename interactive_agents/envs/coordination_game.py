@@ -3,7 +3,7 @@ import numpy as np
 
 class CoordinationGame:
 
-    def __init__(self, config={}):
+    def __init__(self, config={}, spec_only=False):
         self._num_stages = config.get("stages", 5)
         self._num_actions = config.get("actions", 8)
         self._num_players = config.get("players", 2)
@@ -75,13 +75,13 @@ class CoordinationGame:
         if self._focal_point and all(a == 0 for a in actions.values()):
             reward = self._focal_payoff
         elif all(a == actions[0] for a in actions.values()):
-            reward = 1 + self._payoff_noise * np.random.normal()
+            reward = 1 + self._noise * np.random.normal()
         else:
-            reward = 0 + self._payoff_noise * np.random.normal()
+            reward = 0 + self._noise * np.random.normal()
         rewards = {pid:reward for pid in range(self._num_players)}
 
         self._current_stage += 1
-        done = self._num_stage <= self._current_stage
+        done = self._num_stages <= self._current_stage
         dones = {pid:done for pid in range(self._num_players)}
 
         return obs, rewards, dones, None
