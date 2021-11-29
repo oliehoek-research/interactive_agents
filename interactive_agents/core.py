@@ -13,16 +13,6 @@ from interactive_agents.grid_search import grid_search
 from interactive_agents.learning import get_trainer_class
 
 
-def load_configs(config_files):
-    experiments = {}
-
-    for path in config_files:
-        with open(path) as f:
-            experiments.update(yaml.load(f, Loader=yaml.FullLoader))
-    
-    return experiments
-
-
 def make_unique_dir(path, tag):
     sub_path = os.path.join(path, tag)
     idx = 0
@@ -91,12 +81,13 @@ def run_experiment(path, name, config, pool):
     # Launch trials
     trials = []
 
-    for seed in range(config.po("num_seeds")):
+    for seed in range(config.get("num_seeds", 1)):
         print(f"{name} - seed: {seed}")
         trials.append(pool.apply_async(run_trail, 
             (path, trainer_cls, trainer_config, stop, seed), error_callback=print_error))
     
     return trials
+
 
 def run_experiments(experiments, path, num_cpus=1):
     pool = Pool(num_cpus)
@@ -118,3 +109,13 @@ def run_experiments(experiments, path, num_cpus=1):
 
     for trial in trials:
         trial.wait()
+
+
+def load_configs(config_files):
+    experiments = {}
+
+    for path in config_files:
+        with open(path) as f:
+            experiments.update(yaml.load(f, Loader=yaml.FullLoader))
+    
+    return experiments

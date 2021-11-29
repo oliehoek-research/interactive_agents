@@ -23,12 +23,12 @@ class Sampler:
             actions = defaultdict(list)
             rewards = defaultdict(list)
             dones = defaultdict(list)
+            agents = {}
 
             obs = self._env.reset()
-            agents = {}
             for id, ob in obs.items():
                 observations[id].append(ob)
-                pid = self._policy_mapping_fn(id)
+                pid = self._policy_fn(id)
                 agents[id] = self._policies[pid].make_agent()
 
             step = 0
@@ -65,7 +65,7 @@ class Sampler:
                 mean_reward += np.sum(episode.rewards)
 
             mean_reward /= num_trajectories
-            stats[id + "/mean_reward"] = mean_reward
+            stats[str(id) + "/mean_reward"] = mean_reward
             stats["mean_reward"] += mean_reward
 
         stats["episodes"] = num_trajectories

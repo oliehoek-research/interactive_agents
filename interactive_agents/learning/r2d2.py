@@ -19,7 +19,7 @@ class LSTMNet(nn.Module):
             self._value_function = nn.Linear(hidden_size, 1)
 
     def forward(self, obs, hidden):
-        obs = torch.flatten(start_dim=2, end_dim=-1)
+        obs = torch.flatten(obs, start_dim=2, end_dim=-1)
         outputs, hidden = self._lstm(obs, hidden)
         Q = self._q_function(outputs)
 
@@ -63,7 +63,7 @@ class ReplayBuffer:
     def sample(self, batch_size):
         indices = np.random.randint(len(self._actions), size=batch_size)
 
-        obs_batch = [self._obs[idx][:-1] for idx in indices]
+        obs_batch = [self._obs[idx] for idx in indices]
         action_batch = [self._actions[idx] for idx in indices]
         reward_batch = [self._rewards[idx] for idx in indices]
         done_batch = [self._dones[idx] for idx in indices]
@@ -91,12 +91,12 @@ class R2D2Policy:
     
     def act(self, obs, state):
         if np.random.random() <= self._epsilon:
-            return self._action_space.sample()
+            return self._action_space.sample(), state
 
         obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
-        q_values = self._q_network(obs.unsqueeze(0), state)
+        q_values, state  = self._q_network(obs.unsqueeze(0), state)
 
-        return q_values.reshape([-1]).argmax().item()
+        return q_values.reshape([-1]).argmax().item(), state
 
     def make_agent(self):
         return R2D2Agent(self, self._q_network.get_h0())
@@ -120,7 +120,7 @@ class R2D2:
         self._hidden_layers = config.get("hidden_layers", 1)
         self._dueling = config.get("dueling", True)
         
-        self._replay_buffer = ReplayBuffer(action_space, config.get("buffer_size", 2048))
+        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048))
 
         self._online_network = LSTMNet(observation_space, action_space, self._hidden_size, self._hidden_layers, self._dueling)
         self._target_network = LSTMNet(observation_space, action_space, self._hidden_size, self._hidden_layers, self._dueling)
@@ -128,7 +128,7 @@ class R2D2:
         self._optimizer = Adam(self._online_network.parameters(), lr=config.get("lr", 0.01))
         self._iterations = 0
 
-    def _loss(self, obs_batch, next_obs_batch, action_batch, reward_batch, done_batch, mask):
+    def _loss(self, obs_batch, action_batch, reward_batch, done_batch):
         obs_batch = [torch.tensor(obs, dtype=torch.float32) for obs in obs_batch]
         reward_batch = [torch.tensor(rewards, dtype=torch.float32) for rewards in reward_batch]
         done_batch = [torch.tensor(dones, dtype=torch.float32) for dones in done_batch]
@@ -144,8 +144,8 @@ class R2D2:
         done_batch = nn.utils.rnn.pad_sequence(done_batch)
         seq_mask = nn.utils.rnn.pad_sequence(seq_mask)
 
-        next_obs_batch = obs_batch[:,:-1]
-        obs_batch = obs_batch[:,1:]
+        next_obs_batch = obs_batch[1:]
+        obs_batch = obs_batch[:-1]
 
         h0 = self._online_network.get_h0(obs_batch.shape[1])
         online_q, _ = self._online_network(obs_batch, h0)

@@ -1,9 +1,5 @@
 #!/usr/bin/env python3
-
-'''
-Script to select the best configuration from a hyperparameter sweep.
-'''
-
+'''Script to select the best configuration from a hyperparameter sweep'''
 import argparse
 import json
 import numpy as np
@@ -12,7 +8,7 @@ import os.path
 import pandas
 import yaml
 
-from grid_search import grid_search
+from interactive_agents.grid_search import grid_search
 
 
 class Configuration:
@@ -23,24 +19,17 @@ class Configuration:
 
 
 def parse_args():
-    parser = argparse.ArgumentParser("Identifies the best hyperparameters settings from a tuning sweep")  # NOTE: Do we need separate help if we have a docstring?
+    parser = argparse.ArgumentParser("Identifies the best hyperparameters settings from a tuning sweep")
     
     parser.add_argument("path", type=str, help="path to directory containing training results")
-    parser.add_argument("-l", "--loss", type=str, default="nash_conv", 
+    parser.add_argument("-l", "--loss", type=str, default="sampling/mean_reward", 
         help="key of the metric to minimize (or maximize)")
     parser.add_argument("-a", "--accumulate", type=str, default="mean", 
         help="method for condensing time series into a scalar ['mean','max','min']")
-    parser.add_argument("-m", "--mode", type=str, default="min",
+    parser.add_argument("-m", "--mode", type=str, default="max",
         help="whether to maximize or minimize the given key ['max','min']")
     
     return parser.parse_args()
-
-
-def load_variations(path):
-    with open(os.path.join(path, "config.json"), 'r') as config_file:
-        config = json.load(config_file)
-    
-    return grid_search(config)
 
 
 def load_runs(path, loss, accumulate):
@@ -79,8 +68,8 @@ def main(args):
     print("Loading runs...")
 
     # Load variations
-    with open(os.path.join(args.path, "config.json"), 'r') as config_file:
-        experiments = json.load(config_file)
+    with open(os.path.join(args.path, "config.yaml"), 'r') as config_file:
+        experiments = yaml.load(config_file, Loader=yaml.FullLoader)
 
     variations = {}
 
@@ -93,12 +82,12 @@ def main(args):
     for name, config in variations.items():
         runs = load_runs(os.path.join(args.path, name), args.loss, args.accumulate)
         config_str = json.dumps({
-            "alg": config["alg"],
-            "alg_config": config["alg_config"]
+            "trainer": config["trainer"],
+            "config": config["config"]
         }, sort_keys=True)
 
         if config_str not in configs:
-            configs[config_str] = Configuration(config["alg_config"])
+            configs[config_str] = Configuration(config["config"])
 
         configs[config_str].runs.extend(runs)
 

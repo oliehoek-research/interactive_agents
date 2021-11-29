@@ -70,7 +70,7 @@ class IndependentTrainer:
         # Collect training batch and batch statistics
         watch.restart()
         batch, batch_stats = self._training_sampler.sample(self._iteration_episodes)
-        self._timer.stop()
+        watch.stop()
         
         for id, learner in self._learners.items():
             learner.add_batch(batch[id])
@@ -99,7 +99,7 @@ class IndependentTrainer:
             learner.add_batch(batch[id])
             
             watch.start()
-            stats = learner.learn()
+            batch_stats = learner.learn()
             watch.stop()
 
             for key, value in batch_stats.items():
