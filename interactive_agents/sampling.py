@@ -14,11 +14,15 @@ class Sampler:
         self._policy_fn = policy_fn
         self._max_steps = max_steps
 
+    def update_policies(self, updates):
+        for id, update in updates.items():
+            self._policies[id].update(update)
+
     def sample(self, num_trajectories):
         batches = defaultdict(list)
         total_samples = 0
 
-        for _ in range(num_trajectories):
+        for trajectory in range(num_trajectories):
             observations = defaultdict(list)
             actions = defaultdict(list)
             rewards = defaultdict(list)
@@ -36,9 +40,9 @@ class Sampler:
 
             while step < self._max_steps and not all(done.values()):
                 action = {}
-                for id, ob in obs.items():                    
+                for id, ob in obs.items():
                     action[id] = agents[id].act(ob)
-                
+
                 obs, reward, done, _ = self._env.step(action)
 
                 for id in obs.keys():
@@ -46,7 +50,7 @@ class Sampler:
                     actions[id].append(action[id])
                     rewards[id].append(reward[id])
                     dones[id].append(done[id])
-                
+
                 step += 1
             
             for id in observations.keys():

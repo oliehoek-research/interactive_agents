@@ -43,8 +43,8 @@ class IndependentTrainer:
         training_policies = {}
         eval_policies = {}
         for id, learner in self._learners.items():
-            training_policies[id] = self._learners[id].make_policy()
-            eval_policies[id] = self._learners[id].make_policy(eval=True)
+            training_policies[id] = learner.make_policy()
+            eval_policies[id] = learner.make_policy(eval=True)
         
         max_steps = config.get("max_steps", 100)
         policy_fn = lambda id: id
@@ -66,6 +66,12 @@ class IndependentTrainer:
     def train(self):
         self._timer.start()
         watch = Stopwatch()
+
+        # Update sampling policies
+        updates = {}
+        for id, learner in self._learners.items():
+            updates[id] = learner.get_policy_update()
+        self._training_sampler.update_policies(updates)
 
         # Collect training batch and batch statistics
         watch.restart()
@@ -108,6 +114,12 @@ class IndependentTrainer:
         self._total_learning_time += watch.elapsed()
         stats["learning/total_time_s"] = self._total_learning_time
 
+        # Update eval policies
+        updates = {}
+        for id, learner in self._learners.items():
+            updates[id] = learner.get_policy_update(eval=True)
+        self._eval_sampler.update_policies(updates)
+
         # Run evaluation episodes
         _, eval_stats = self._eval_sampler.sample(self._eval_episodes)
 
@@ -119,4 +131,23 @@ class IndependentTrainer:
         stats["total_time_s"] = self._timer.elapsed()
 
         return stats
+    
+    def get_policies(self):
+        policies = {}
+        for id, learner in self._learners.items():
+            policies[id] = learner.make_policy(eval=True)
+            policies[id].update(learner.get_policy_update(eval=True))
         
+        return policies
+    
+    def get_state(self):
+        state = {}
+        for id, learner in self._learners.items():
+            state[id] = learner.get_state()
+        
+        return state
+    
+    def set_state(self, state):
+        for id, learner in self._learners.items():
+            if id in state:
+                learner.set_state(state[id])

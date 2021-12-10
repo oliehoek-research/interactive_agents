@@ -179,6 +179,13 @@ class R2D2:
     def make_policy(self, eval=False):
         return R2D2Policy(self._observation_space, self._action_space, 
             self._hidden_size, self._hidden_layers, self._dueling, 0 if eval else self._epsilon)
-
+    
     def get_policy_update(self, eval=False):
         return self._online_network.state_dict()
+
+    def get_state(self):
+        return self._online_network.state_dict()
+
+    def set_state(self, state_dict):
+        self._online_network.load_state_dict(state_dict)
+        self._target_network.load_state_dict(state_dict)

@@ -4,6 +4,7 @@ import numpy as np
 import os
 import os.path
 import pandas
+import pickle
 import random
 import torch
 import traceback
@@ -60,6 +61,10 @@ def run_trail(path, trainer_cls, config, stop, seed):
 
     dataframe = pandas.DataFrame(results)
     dataframe.to_csv(results_file)
+
+    # Save final learner state with network weights
+    with open(os.path.join(path, "state.pickle"), 'wb') as state_file:
+        pickle.dump(trainer.get_state(), state_file)
 
 
 def run_experiment(path, name, config, pool):
