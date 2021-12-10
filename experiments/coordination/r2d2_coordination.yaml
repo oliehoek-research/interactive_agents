@@ -1,8 +1,8 @@
-r2d2_cooperation_tune:
+r2d2_coordination:
   stop:
-    total_iterations: 200
+    total_iterations: 300
   trainer: "independent"
-  num_seeds: 5
+  num_seeds: 8
   config:
     max_steps: 100
     iteration_episodes: 100
@@ -14,10 +14,8 @@ r2d2_cooperation_tune:
       players: 2
     learner: "R2D2"
     learner_config:
-      batch_size:
-        grid_search: [4, 8]
-      num_batches:
-        grid_search: [4, 8]
+      batch_size: 8
+      num_batches: 8
       sync_interval: 4
       epsilon: 0.01
       gamma: 0.99

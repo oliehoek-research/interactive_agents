@@ -4,6 +4,11 @@ def get_coordination_game():
     return CoordinationGame
 
 
+def get_linguistic_game():
+    from interactive_agents.envs.linguistic_game import LinguisticGame
+    return LinguisticGame
+
+
 def get_gym_env():
     from interactive_agents.envs.gym_env import GymEnv
     return GymEnv
@@ -21,6 +26,7 @@ def get_repeated_game():
 
 ENVS = {
     "coordination": get_coordination_game,
+    "linguistic": get_linguistic_game,
     "gym": get_gym_env,
     "memory": get_memory_game,
     "repeated": get_repeated_game,

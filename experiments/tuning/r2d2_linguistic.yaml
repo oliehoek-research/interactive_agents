@@ -1,0 +1,29 @@
+r2d2_linguistic_tune:
+  stop:
+    total_iterations: 100
+  trainer: "independent"
+  num_seeds: 4
+  config:
+    max_steps: 20
+    iteration_episodes: 100
+    eval_episodes: 10
+    env: linguistic
+    env_config:
+      stages: 20
+      actions: 5
+    learner: "R2D2"
+    learner_config:
+      batch_size: 16
+      num_batches: 16
+      sync_interval: 4
+      epsilon:
+        grid_search: [0.01, 0.05]
+      gamma: 0.99
+      beta: 0.5
+      lr: 
+        grid_search: [0.001, 0.01]
+      hidden_size: 
+        grid_search: [64, 128]
+      hidden_layers: 1
+      dueling: True
+      buffer_size: 1024
