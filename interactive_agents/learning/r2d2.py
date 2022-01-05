@@ -1,3 +1,4 @@
+"""A simple single-threaded R2D2 implementation"""
 import numpy as np
 import torch
 import torch.nn as nn
@@ -84,7 +85,15 @@ class R2D2Agent:
 
 class R2D2Policy:
 
-    def __init__(self, observation_space, action_space, hidden_size, hidden_layers, dueling, epsilon):
+    def __init__(self, 
+            observation_space=None, 
+            action_space=None, 
+            hidden_size=64, 
+            hidden_layers=1, 
+            dueling=True, 
+            epsilon=0):
+        assert observation_space is not None, "Must define an observation space"
+        assert action_space is not None, "Must define an action space"
         self._action_space = action_space
         self._epsilon = epsilon
         self._q_network = LSTMNet(observation_space, action_space, hidden_size, hidden_layers, dueling)
@@ -101,8 +110,8 @@ class R2D2Policy:
     def make_agent(self):
         return R2D2Agent(self, self._q_network.get_h0())
 
-    def update(self, data):
-        self._q_network.load_state_dict(data)
+    def update(self, state):
+        self._q_network.load_state_dict(state)
 
 
 class R2D2:
@@ -183,9 +192,14 @@ class R2D2:
     def get_policy_update(self, eval=False):
         return self._online_network.state_dict()
 
-    def get_state(self):
-        return self._online_network.state_dict()
+    def get_policy(self):
+        config = {
+            "observation_space": self._observation_space,
+            "action_space": self._action_space,
+            "hidden_size": self._hidden_size,
+            "hidden_layers": self._hidden_layers,
+            "dueling": self._dueling,
+            "epsilon": 0,
+        }
 
-    def set_state(self, state_dict):
-        self._online_network.load_state_dict(state_dict)
-        self._target_network.load_state_dict(state_dict)
+        return "R2D2", config, self._online_network.state_dict()

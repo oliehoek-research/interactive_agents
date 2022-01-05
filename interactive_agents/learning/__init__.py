@@ -1,37 +1,25 @@
-
-def get_dqn():
-    from interactive_agents.learning.dqn import DQN
-    return DQN
-
-
-def get_r2d2():
-    from interactive_agents.learning.r2d2 import R2D2
-    return R2D2
-
+from interactive_agents.learning.dqn import DQN
+from interactive_agents.learning.r2d2 import R2D2
+from interactive_agents.learning.independent import IndependentTrainer
 
 LEARNERS = {
-    "DQN": get_dqn,
-    "R2D2": get_r2d2,
+    "DQN": DQN,
+    "R2D2": R2D2,
 }
 
 def get_learner_class(name):
     if name not in LEARNERS:
         raise ValueError(f"Learner '{name}' is not defined")
     
-    return LEARNERS[name]()
-
-
-def get_independent():
-    from interactive_agents.learning.independent import IndependentTrainer
-    return IndependentTrainer
+    return LEARNERS[name]
 
 
 TRAINERS = {
-    "independent": get_independent,
+    "independent": IndependentTrainer,
 }
 
 def get_trainer_class(name):
     if name not in TRAINERS:
         raise ValueError(f"Trainer '{name}' is not defined")
     
-    return TRAINERS[name]()
+    return TRAINERS[name]
