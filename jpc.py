@@ -14,7 +14,7 @@ from interactive_agents.envs import get_env_class
 from interactive_agents.learning import get_trainer_class
 from interactive_agents.sampling import Sampler
 
-# TODO: Tensorflow models seem to hang whenwe try to run them in a distributed fashion, need to initialize models separately in each thread like pytorch does
+# TODO: Tensorflow models seem to hang when we try to run them in a distributed fashion, need to initialize models separately in each thread like pytorch does
 
 def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
@@ -137,6 +137,7 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
     return returns
 
 
+# NOTE: A major limitation of this approach is that it 
 if __name__ == '__main__':
     args = parse_args()
 
