@@ -4,6 +4,8 @@
 Training script for finite, constant-sum extensive-form games.
 '''
 
+# NOTE: What is the difference between this script and the main "train.py" script? - seems to set up everything manually within the script
+
 import argparse
 from collections import defaultdict
 import json
