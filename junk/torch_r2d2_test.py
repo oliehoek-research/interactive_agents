@@ -7,6 +7,7 @@ from torch._C import TensorType
 from torch.functional import Tensor
 import torch.nn as nn
 from torch.optim import Adam
+from typing import Optional, Tuple
 
 
 class LSTMNet(nn.Module):
@@ -17,26 +18,32 @@ class LSTMNet(nn.Module):
         self._hidden_layers = hidden_layers
         self._deuling = deuling
 
-        self._lstm = nn.LSTM(np.prod(observation_space.shape), hidden_size, hidden_layers)
+        input_size = int(np.prod(observation_space.shape))  # NOTE: Need to cast for TorchScript to work
+        self._lstm = nn.LSTM(input_size, hidden_size, hidden_layers)
         self._q_function = nn.Linear(hidden_size, action_space.n)
 
         if deuling:
             self._value_function = nn.Linear(hidden_size, 1)
 
-    def forward(self, obs, hidden):
-        # obs = obs.flatten(2)
+    def forward(self, 
+            obs: torch.Tensor, 
+            hidden: Optional[Tuple[torch.Tensor, torch.Tensor]]=None):
         outputs, hidden = self._lstm(obs, hidden)
         Q = self._q_function(outputs)
 
         if self._deuling:
             V = self._value_function(outputs)
-            Q += V - Q.mean(2, keepdims=True)
+            Q += V - Q.mean(2, keepdim=True)
 
         return Q, hidden
 
-    def get_h0(self, batch_size=1):
-        hidden = torch.zeros((self._hidden_layers, batch_size, self._hidden_size), dtype=torch.float32)
-        cell = torch.zeros((self._hidden_layers, batch_size, self._hidden_size), dtype=torch.float32)
+    @torch.jit.export
+    def get_h0(self, batch_size: int=1):
+        shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
+
+        hidden = torch.zeros(shape, dtype=torch.float32)
+        cell = torch.zeros(shape, dtype=torch.float32)
+        
         return hidden, cell
 
 
@@ -93,6 +100,21 @@ class ReplayBuffer:
         return obs_batch, next_obs_batch, action_batch, reward_batch, done_batch, mask
 
 
+class Policy:
+
+    def __init__(self, model):
+        self._model = model
+        self._state = None
+
+    def reset(self, batch_size=1):
+        self._state = self._model.get_h0(batch_size)
+
+    def act(self, obs, explore=False):
+        q_values, self._state = self._model(obs.reshape([1,1,-1]), self._state)
+
+        return q_values.reshape([-1]).argmax()
+
+
 class R2D2:
 
     def __init__(self, 
@@ -122,6 +144,9 @@ class R2D2:
 
         self._online_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, deuling)
         self._target_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, deuling)
+        
+        self._online_network = torch.jit.script(self._online_network)
+        self._target_network = torch.jit.script(self._target_network)
         
         self._optimizer = Adam(self._online_network.parameters(), lr=lr)
         self._iterations = 0
@@ -184,6 +209,9 @@ class R2D2:
             loss = self._loss(*batch).mean()
             loss.backward()
             self._optimizer.step()
+    
+    def save(self, path):
+        torch.jit.save(self._online_network, path)
 
 
 def evaluate(env, policy, num_episodes=30):
@@ -332,7 +360,7 @@ if __name__ == "__main__":
     training_epochs = 300
 
     # env = MemoryGame(20, 8)
-    env = CoordinationGame(20, 16, ['fixed', 'sp', 'fp'])
+    env = CoordinationGame(20, 16, ['fixed'])
     agent = R2D2(env)
 
     print("\n===== Training =====")
@@ -344,3 +372,14 @@ if __name__ == "__main__":
         print(f"\n----- Epoch {epoch + 1} -----")
         print(f"    mean return: {mean_reward}")
         print(f"    success rate: {success_rate * 100}%")
+    
+    agent.save("torch_r2d2.pt")
+
+    model = torch.jit.load("torch_r2d2.pt")
+    policy = Policy(model)
+
+    mean_reward, success_rate = evaluate(env, policy)
+
+    print(f"\n----- Serialized Model -----")
+    print(f"    mean return: {mean_reward}")
+    print(f"    success rate: {success_rate * 100}%")

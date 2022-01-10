@@ -201,8 +201,12 @@ if __name__ == "__main__":
             with tf.GradientTape() as tape:
                 logits, state = model(obs_batch, training=True)
 
-                losses = tf.nn.softmax_cross_entropy_with_logits(action_batch, logits)
-                loss = tf.reduce_mean(mask * losses)
+                dist = tf.nn.softmax(logits, -1)
+                loss = -tf.reduce_mean(dist * action_batch)
+
+                # Cross-entropy loss
+                # losses = tf.nn.softmax_cross_entropy_with_logits(action_batch, logits)
+                # loss = tf.reduce_mean(mask * losses)
 
             gradients = tape.gradient(loss, model.trainable_variables)
             optimizer.apply_gradients(zip(gradients, model.trainable_variables))

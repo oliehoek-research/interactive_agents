@@ -9,6 +9,7 @@ import torch.nn as nn
 from torch.optim import Adam
 
 
+# TODO: Enable TorchScript compilation for serialization
 class QNet(nn.Module):
 
     def __init__(self, obs_space, action_space, hidden_sizes, deuling):
