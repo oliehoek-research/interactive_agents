@@ -144,14 +144,8 @@ class LSTMNet(nn.Module):
         self._linear = nn.Linear(lstm_size, output_size)
         self._lstm_size = lstm_size
 
-    def forward(self, obs, hidden, seq_lens):
-        if seq_lens is None:
-            out, hidden = self._lstm(obs, hidden)
-        else:
-            obs = nn.utils.rnn.pack_padded_sequence(obs, seq_lens, enforce_sorted=False)
-            out, hidden = self._lstm(obs, hidden)
-            out = nn.utils.rnn.pad_packed_sequence(out)
-
+    def forward(self, obs, hidden):
+        out, hidden = self._lstm(obs, hidden)
         out = self._linear(out)
 
         return out, hidden
@@ -183,7 +177,7 @@ class GRUNet(nn.Module):
 
 
 if __name__ == "__main__":
-    env = MemoryGame(15, 4)
+    env = MemoryGame(10, 4)
     num_demonstrations = 1024
     batch_size = 32
     hidden_size = 10
@@ -197,8 +191,8 @@ if __name__ == "__main__":
     for episode in data:
         buffer.add(episode)
     
-    # model = LSTMNet(env.observation_space.shape[0], env.action_space.n, hidden_size)
-    model = GRUNet(env.observation_space.shape[0], env.action_space.n, hidden_size)
+    model = LSTMNet(env.observation_space.shape[0], env.action_space.n, hidden_size)
+    # model = GRUNet(env.observation_space.shape[0], env.action_space.n, hidden_size)
 
     mean_reward, success_rate = evaluate(env, model, eval_episodes)
     print("----- Untrained Model -----")
@@ -212,7 +206,7 @@ if __name__ == "__main__":
     for epoch in range(training_epochs):
         obs_batch, action_batch, seq_lens = buffer.sample(batch_size)
         optimizer.zero_grad()
-        logits, _ = model(obs_batch, initial_hidden, seq_lens)
+        logits, _ = model(obs_batch, initial_hidden)
         dist = nn.functional.softmax(logits, -1)
         loss = -torch.mean(dist * action_batch)
         loss.backward()
