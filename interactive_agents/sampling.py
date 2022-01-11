@@ -1,78 +1,140 @@
-from collections import defaultdict, namedtuple
+"""Methods and utilities for sampling experiences"""
+from collections import defaultdict
 import numpy as np
 
-from interactive_agents.envs import get_env_class
+class MultiBatch:
+    """Represents a multi-agent experience batch"""
 
-Episode = namedtuple("Episode", ["obs", "actions", "rewards", "dones"])
+    OBS = "obs"
+    ACTION = "actions"
+    REWARD = "rewards"
+    DONE = "dones"
 
-class Sampler:
+    def __init__(self):
+        self._policy_batches = defaultdict(list)
+        self._agent_episodes = None
+        self._policy_map = None
 
-    def __init__(self, env_name, env_config, policies, policy_fn, max_steps):
-        env_cls = get_env_class(env_name)
-        self._env = env_cls(env_config)
-        self._policies = policies
-        self._policy_fn = policy_fn
-        self._max_steps = max_steps
+    def _store_episode(self):
+        for agent_id, episode in self._agent_episodes.items():
+            for key in episode.keys():
+                episode[key] = np.array(episode[key])
 
-    def update_policies(self, updates):
-        for id, update in updates.items():
-            self._policies[id].update(update)
+            if self._policy_map is not None:
+                batch = self._policy_batches[self._policy_map[agent_id]]
+            else:
+                batch = self._policy_batches[agent_id]
 
-    def sample(self, num_trajectories):
-        batches = defaultdict(list)
-        total_samples = 0
+            batch.append(episode)
 
-        for trajectory in range(num_trajectories):
-            observations = defaultdict(list)
-            actions = defaultdict(list)
-            rewards = defaultdict(list)
-            dones = defaultdict(list)
-            agents = {}
+    def start_episode(self, policy_map=None):
+        if self._agent_episodes is not None:
+            self._store_episode()
 
-            obs = self._env.reset()
-            for id, ob in obs.items():
-                observations[id].append(ob)
-                pid = self._policy_fn(id)
-                agents[id] = self._policies[pid].make_agent()
+        self._agent_episodes = defaultdict(lambda: defaultdict(list))
+        self._policy_map = policy_map
 
-            step = 0
-            done = {0: False}
-
-            while step < self._max_steps and not all(done.values()):
-                action = {}
-                for id, ob in obs.items():
-                    action[id] = agents[id].act(ob)
-
-                obs, reward, done, _ = self._env.step(action)
-
-                for id in obs.keys():
-                    observations[id].append(obs[id])
-                    actions[id].append(action[id])
-                    rewards[id].append(reward[id])
-                    dones[id].append(done[id])
-
-                step += 1
-            
-            for id in observations.keys():
-                obs = np.array(observations[id], dtype=np.float32)
-                action = np.array(actions[id], dtype=np.int64)
-                reward = np.array(rewards[id], dtype=np.float32)
-                done = np.array(dones[id], dtype=np.float32)
-                batches[id].append(Episode(obs, action, reward, done))
-            
-            total_samples += step
+    def end_episode(self):
+        if self._agent_episodes is not None:
+            self._store_episode()
         
-        stats = {"mean_reward": 0}
-        for id, batch in batches.items():
-            mean_reward = 0
-            for episode in batch:
-                mean_reward += np.sum(episode.rewards)
+        self._agent_episodes = None
+        self._policy_map = None
 
-            mean_reward /= num_trajectories
-            stats[str(id) + "/mean_reward"] = mean_reward
-            stats["mean_reward"] += mean_reward
+    def append(self, field, values):
+        for agent_id, value in values.items():
+            self._agent_episodes[agent_id][field].append(value)
 
-        stats["episodes"] = num_trajectories
-        stats["samples"] = total_samples
+    def step(self, obs, actions, rewards, dones, fetches):
+        for agent_id in obs.keys():
+            episode = self._agent_episodes[agent_id]
 
-        return batches, stats
+            episode[MultiBatch.OBS].append(obs)
+            episode[MultiBatch.ACTION].append(actions)
+            episode[MultiBatch.REWARD].append(rewards)
+            episode[MultiBatch.DONE].append(dones)
+            
+            for key, value in fetches[agent_id].items():                
+                episode[key].append(value)
+
+    def policy_batch(self, policy_id):
+        return self._policy_batches[policy_id]
+
+    def items(self):
+        return self._policy_batches.items()
+
+
+class FrozenPolicy:
+    """Wrapper for frozen Torch policies"""
+
+    class Agent:
+
+        def __init__(self):
+            self._state = self._model.initial_state()
+
+        def act(self, obs):
+            action, self._state = self._model(obs, self._state)
+            return action, {}
+
+    def __init__(self, model):
+        self._model = model
+
+    def make_agent(self):
+        return self.Agent()
+
+    def update(self, update):
+        """Dummy to make sure we are not trying to update frozen polices"""
+        raise NotImplementedError("Frozen policies cannot be updated")
+
+
+def sample(self, env, policies, num_episodes, max_steps, policy_map=None):
+    """Generates a batch of episodes"""
+    batch = MultiBatch()
+    total_steps = 0
+    
+    for episode in range(num_episodes):
+        obs = env.reset()
+        step = 0
+
+        agents = {}
+        dones = {}
+        for agent_id, ob in obs.keys():
+            if policy_map is not None:
+                policy_id = policy_map[agent_id]
+            else:
+                policy_id = agent_id
+            
+            agents[agent_id] = policies[policy_id].make_agent()
+            dones[agent_id] = False
+
+        batch.start_episode(policy_map)
+        batch.write(MultiBatch.OBS, obs)
+
+        while step < max_steps and not all(dones.values()):
+            actions = {}
+            fetches = {}
+            for agent_id, ob in obs.items():
+                actions[agent_id], fetches[agent_id] = agents[agent_id].act(ob)
+
+            obs, rewards, dones, _ = env.step(actions)
+
+            batch.step(obs, actions, rewards, dones, fetches)
+            step += 1
+    
+        batch.end_episode()
+        total_steps += step
+    
+    stats = {"mean_reward": 0}
+    for policy_id, batch in batch.items():
+        mean_reward = 0
+        for rewards in batch[MultiBatch.REWARD]:
+            mean_reward += np.sum(rewards)
+
+        mean_reward /= len(batch[MultiBatch.REWARD])
+        stats[str(policy_id) + "/mean_reward"] = mean_reward
+        stats["mean_reward"] += mean_reward
+
+    stats["episodes"] = num_episodes
+    stats["samples"] = total_steps
+
+    return batch, stats

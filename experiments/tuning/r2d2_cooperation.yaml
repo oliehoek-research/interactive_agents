@@ -1,7 +1,7 @@
 r2d2_cooperation_tune:
   stop:
     total_iterations: 200
-  trainer: "independent"
+  trainer: independent
   num_seeds: 5
   config:
     max_steps: 100
@@ -12,7 +12,7 @@ r2d2_cooperation_tune:
       stages: 5
       actions: 10
       players: 2
-    learner: "R2D2"
+    learner: R2D2
     learner_config:
       batch_size:
         grid_search: [4, 8]
