@@ -1,16 +1,17 @@
-from collections import defaultdict
-
-import gym
+"""Torch implementation of DQN compatible with training framework"""
+from math import ceil
 import numpy as np
-import ray
+from typing import Optional, Tuple
 
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 
+from interactive_agents.sampling import MultiBatch
 
-# TODO: Enable TorchScript compilation for serialization
+
 class QNet(nn.Module):
+    """Dense Q-Network with optional deuling architecture"""
 
     def __init__(self, obs_space, action_space, hidden_sizes, deuling):
         super(QNet, self).__init__()
@@ -40,52 +41,69 @@ class QNet(nn.Module):
         return Q
 
 
+class QPolicy(nn.Module):
+    """Torchscript policy wrapper for Q networks"""
+
+    def __init__(self, model):
+        super(QPolicy, self).__init__()
+        self._model = model
+
+    def forward(self, obs, state: Optional[Tuple[torch.Tensor, torch.Tensor]]):
+        return self._model(obs).argmax(-1)
+    
+    @torch.jit.export
+    def initial_state(self):
+        return torch.empty((0,)) # NOTE: Return empty tensor for Torchscript
+
+
 class ReplayBuffer:
+    """Replay buffer which samples batches of episode rather than steps"""
 
     def __init__(self, capacity=128):
+        self._buffer = []
         self._capacity = capacity
-
         self._index = 0
-        self._obs = []
-        self._actions = []
-        self._rewards = []
-        self._dones = []
 
-    def add(self, obs, actions, rewards, dones):
-        if len(obs) < self._capacity:
-            self._obs.append(obs)
-            self._actions.append(actions)
-            self._rewards.append(rewards)
-            self._dones.append(dones)
-        else:
-            self._obs[self._index] = obs
-            self._actions[self._index] = actions
-            self._rewards[self._index] = rewards
-            self._dones[self._index] = dones
-
-        self._index = (self._index + 1) % self._capacity
+    def add_episodes(self, episodes):
+        for episode in batch:
+            if len(self._buffer) < self._capacity:
+                self._buffer.append(episode)
+            else:
+                self._buffer[self._index] = episode
+            
+            self._index = (self._index + 1) % self._capacity
 
     def sample(self, batch_size):
+        obs_batch = []
+        next_obs_batch = []
+        action_batch = []
+        reward_batch = []
+        done_batch = []
+
         indices = np.random.randint(len(self._actions), size=batch_size)
-        obs_batch = np.concatenate([self._obs[idx][:-1] for idx in indices])
-        next_obs_batch = np.concatenate([self._obs[idx][1:] for idx in indices])
-        action_batch = np.concatenate([self._actions[idx] for idx in indices])
-        reward_batch = np.concatenate([self._rewards[idx] for idx in indices])
-        done_batch = np.concatenate([self._dones[idx] for idx in indices])
+
+        for episode in self._buffer(indices):
+            obs_batch.append(episode[MultiBatch.OBS][:-1])
+            next_obs_batch.append(episode[MultiBatch.OBS][1:])
+            action_batch.append(episode[MultiBatch.ACTION])
+            reward_batch.append(episode[MultiBatch.REWARD])
+            done_batch.append(episode[MultiBatch.DONE])
+
+        obs_batch = np.concatenate(obs_batch)
+        next_obs_batch = np.concatenate(next_obs_batch)
+        action_batch = np.concatenate(action_batch)
+        reward_batch = np.concatenate(reward_batch)
+        done_batch = np.concatenate(done_batch)
 
         return obs_batch, next_obs_batch, action_batch, reward_batch, done_batch
 
 
-class DQNAgent:
-
-    def __init__(self, policy):
-        self._policy = policy
-
-    def act(self, obs):
-        return self._policy.act(obs)
-
-
 class DQNPolicy:
+
+    class Agent:
+
+        def act(self, obs):
+            return self.act(obs)
 
     def __init__(self, observation_space, action_space, hidden_sizes, dueling, epsilon):
         self._action_space = action_space
@@ -101,7 +119,7 @@ class DQNPolicy:
         return q_values.reshape([-1]).argmax().item()
 
     def make_agent(self):
-        return DQNAgent(self)
+        return self.Agent()
 
     def update(self, data):
         self._q_network.load_state_dict(data)
@@ -113,21 +131,26 @@ class DQN:
         self._observation_space = observation_space
         self._action_space = action_space
         self._batch_size = config.get("batch_size", 4)
-        self._num_batches = config.get("num_batches", 4)
-        self._sync_interval = config.get("sync_interval", 4)
+        self._batches_per_episode = config.get("batches_per_episode", 1)
+        self._sync_interval = config.get("sync_interval", 100)
         self._epsilon = config.get("epsilon", 0.05)
         self._gamma = config.get("gamma", 0.99)
         self._beta = config.get("beta", 0.5)
         self._hidden_sizes = config.get("hiddens", [64])
         self._dueling = config.get("dueling", True)
+        self._compile = config.get("compile", False)
 
-        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048))
+        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 1024))
 
         self._online_network = QNet(observation_space.shape[0], action_space.n, self._hidden_sizes, self._dueling)
         self._target_network = QNet(observation_space.shape[0], action_space.n, self._hidden_sizes, self._dueling)
 
+        if self._compile:
+            self._online_network = torch.jit.script(self._online_network)
+            self._target_network = torch.jit.script(self._target_network)
+
         self._optimizer = Adam(self._online_network.parameters(), lr=config.get("lr", 0.01))
-        self._iterations = 0
+        self._total_episodes = 0
 
     def _loss(self, obs_batch, next_obs_batch, action_batch, reward_batch, done_batch):
         obs_batch = torch.as_tensor(obs_batch, dtype=torch.float32)
@@ -147,13 +170,26 @@ class DQN:
         errors = nn.functional.smooth_l1_loss(online_q, q_targets.detach(), beta=self._beta, reduction='none')
         return torch.mean(errors)
 
-    def learn(self):
-        self._iterations += 1
+    def _update(self):
+        batch = self._replay_buffer.sample(self._batch_size)
+        self._optimizer.zero_grad()
+        loss = self._loss(*batch).mean()
+        loss.backward()
+        self._optimizer.step()
+
+        return {}
+
+    def learn(self, episodes):
+        num_episodes = len(episodes)
+        self._replay_buffer.add_batch(episodes)
+
+        self._total_episodes += num_episodes
         if self._iterations % self._sync_interval == 0:
             parameters = self._online_network.state_dict()
             self._target_network.load_state_dict(parameters)
 
-        for _ in range(self._num_batches):
+        num_batches = ceil(self._batches_per_episode * num_episodes)
+        for _ in range(num_batches):
             batch = self._replay_buffer.sample(self._batch_size)
             self._optimizer.zero_grad()
             loss = self._loss(*batch).mean()
@@ -162,14 +198,15 @@ class DQN:
         
         return {}  # TODO: Add statistics
 
-
-    def add_batch(self, batch):
-        for trajectory in batch:
-            self._replay_buffer.add(*trajectory)
-
     def make_policy(self, eval=False):
         return DQNPolicy(self._observation_space, self._action_space, 
             self._hidden_sizes, self._dueling, 0 if eval else self._epsilon)
 
-    def get_policy_update(self, eval=False):
+    def get_update(self, eval=False):
         return self._online_network.state_dict()
+
+    def export_policy(self):
+        policy = QPolicy(self._online_network)
+        policy.eval()  # NOTE: Need to explicitly switch to eval mode
+
+        return torch.jit.freeze(policy, ["initial_state"])

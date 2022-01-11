@@ -1,7 +1,7 @@
 r2d2_coordination:
   stop:
     total_iterations: 300
-  trainer: "independent"
+  trainer: independent
   num_seeds: 8
   config:
     max_steps: 100
@@ -12,7 +12,7 @@ r2d2_coordination:
       stages: 5
       actions: 10
       players: 2
-    learner: "R2D2"
+    learner: R2D2
     learner_config:
       batch_size: 8
       num_batches: 8

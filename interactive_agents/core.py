@@ -62,9 +62,17 @@ def run_trail(path, trainer_cls, config, stop, seed):
     dataframe = pandas.DataFrame(results)
     dataframe.to_csv(results_file)
 
-    # Save final learner state with network weights
-    with open(os.path.join(path, "state.pickle"), 'wb') as state_file:
+    # Checkpoint learning
+    with open(os.path.join(path, "checkpoint.pickle"), 'wb') as state_file:
         pickle.dump(trainer.get_state(), state_file)
+    
+    # Export policies
+    path = os.path.join(path, "policies")
+    os.makedirs(path)
+
+    policies = trainer.export_policies()
+    for id, policy in policies.items():
+        torch.jit.save(policy, os.path.join(path, f"{id}.pt"))
 
 
 def run_experiment(path, name, config, pool):
@@ -85,7 +93,6 @@ def run_experiment(path, name, config, pool):
 
     # Launch trials
     trials = []
-
     for seed in range(config.get("num_seeds", 1)):
         print(f"{name} - seed: {seed}")
         trials.append(pool.apply_async(run_trail, 
@@ -107,7 +114,7 @@ def run_experiments(experiments, path, num_cpus=1):
             exp_path = make_unique_dir(path, name)
 
             with open(os.path.join(exp_path, "config.yaml"), 'w') as config_file:
-                yaml.dump({name: experiment}, config_file)
+                yaml.dump({name: experiment}, config_file)  # NOTE: Save base tuning configuration
 
             for var_name, var_experiment in variations.items():
                 trials += run_experiment(exp_path, var_name, var_experiment, pool)

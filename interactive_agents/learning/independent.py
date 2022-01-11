@@ -1,10 +1,7 @@
-from collections import defaultdict
-
-import numpy as np
-
+"""Simple Trainer that runs independent learners for each agent"""
 from interactive_agents.envs import get_env_class
 from interactive_agents.learning import get_learner_class
-from interactive_agents.sampling import Sampler
+from interactive_agents.sampling import sample
 from interactive_agents.stopwatch import Stopwatch
 
 
@@ -13,6 +10,7 @@ class IndependentTrainer:
     def __init__(self, config):
         self._iteration_episodes = config.get("iteration_episodes", 100)
         self._eval_episodes = config.get("eval_episodes", 10)
+        self._max_steps = config.get("max_steps", 100)
 
         # Get environment class and config
         if "env" not in config:
@@ -22,10 +20,10 @@ class IndependentTrainer:
         env_config = config.get("env_config", {})
         env_cls = get_env_class(env_name)
 
-        # Build dummy environment - get observation and action spaces
-        env = env_cls(env_config, spec_only=True)
-        obs_space = env.observation_space
-        action_space = env.action_space
+        # Build environment - get observation and action spaces
+        self._env = env_cls(env_config, spec_only=False)
+        obs_space = self._env.observation_space
+        action_space = self._env.action_space
 
         # Get learner class and config
         if "learner" not in config:
@@ -36,21 +34,17 @@ class IndependentTrainer:
 
         # Initialize learners
         self._learners = {}
+        self._policy_map = {}
         for id in obs_space.keys():
             self._learners[id] = learner_cls(obs_space[id], action_space[id], learner_config)
+            self._policy_map[id] = id
 
-        # Initialize training and eval samplers
-        training_policies = {}
-        eval_policies = {}
+        # Initialize training and eval policies
+        self._training_policies = {}
+        self._eval_policies = {}
         for id, learner in self._learners.items():
-            training_policies[id] = learner.make_policy()
-            eval_policies[id] = learner.make_policy(eval=True)
-        
-        max_steps = config.get("max_steps", 100)
-        policy_fn = lambda id: id
-
-        self._training_sampler = Sampler(env_name, env_config, training_policies, policy_fn, max_steps)
-        self._eval_sampler = Sampler(env_name, env_config, eval_policies, policy_fn, max_steps)
+            self._training_policies[id] = learner.make_policy()
+            self._eval_policies[id] = learner.make_policy(eval=True)
 
         # Global timer
         self._timer = Stopwatch()
@@ -68,18 +62,14 @@ class IndependentTrainer:
         watch = Stopwatch()
 
         # Update sampling policies
-        updates = {}
         for id, learner in self._learners.items():
-            updates[id] = learner.get_policy_update()
-        self._training_sampler.update_policies(updates)
+            self._training_policies[id].update(learner.get_update())
 
         # Collect training batch and batch statistics
         watch.restart()
-        batch, batch_stats = self._training_sampler.sample(self._iteration_episodes)
+        batch, batch_stats = sample(self._env, self._training_policies,
+             self._iteration_episodes, self._max_steps, self._policy_map)
         watch.stop()
-        
-        for id, learner in self._learners.items():
-            learner.add_batch(batch[id])
 
         stats = {}
         for key, value in batch_stats.items():
@@ -101,11 +91,9 @@ class IndependentTrainer:
 
         # Train learners on new training batch
         watch.reset()
-        for id, learner in self._learners.items():
-            learner.add_batch(batch[id])
-            
+        for id, episodes in batch.items():
             watch.start()
-            batch_stats = learner.learn()
+            batch_stats = self._learners.learn(episodes)
             watch.stop()
 
             for key, value in batch_stats.items():
@@ -115,15 +103,14 @@ class IndependentTrainer:
         stats["learning/total_time_s"] = self._total_learning_time
 
         # Update eval policies
-        updates = {}
         for id, learner in self._learners.items():
-            updates[id] = learner.get_policy_update(eval=True)
-        self._eval_sampler.update_policies(updates)
+            self._eval_policies[id].update(learner.get_update(eval=True))
 
         # Run evaluation episodes
-        _, eval_stats = self._eval_sampler.sample(self._eval_episodes)
+        _, eval_stats = sample(self._env, self._eval_policies,
+             self._eval_episodes, self._max_steps, self._policy_map)
 
-        for key, value in batch_stats.items():
+        for key, value in eval_stats.items():
             stats["eval/" + key] = value
         
         # Add total training time
@@ -132,11 +119,10 @@ class IndependentTrainer:
 
         return stats
     
-    def get_policies(self):
+    def export_policies(self):
         policies = {}
         for id, learner in self._learners.items():
-            policies[id] = learner.make_policy(eval=True)
-            policies[id].update(learner.get_policy_update(eval=True))
+            policies[id] = learner.export_policy()
         
         return policies
     

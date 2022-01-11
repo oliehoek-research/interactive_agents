@@ -81,3 +81,21 @@ All actors an learners should use a shared communication channel that avoids unn
 From the trainer's perspective, it instantiates the learner(s), then requests training and eval actors for each simulation worker.  The simulation workers are then run until enough data (episodes or steps) has been generated for the current training iteration.  To ensure eval actors follow a fixed policy, and to prevent unnecessary policy updates, we synchronize Actors externally by calling a .sync() method.  Therefore, Actors can send data to the learner whenever they wish, but can only receive data at intervals that are beyond their control.  Furthermore, they have no way of knowing whether their data has been uploaded to the learner itself.
 
 In general, the learners themselves will be data-driven, performing training when sufficient amounts of data have arrived.  We will add a .run() method to allow learners to define a continuous training loop (useful for batch RL).
+
+### PSRO
+
+The output of PSRO is a collection of policies that should approximate a Nash equilibrium of the game being learned on.  If the game is symmetric, then this set can consist of a single policy that maps to all players in the environment.
+
+Only a single instance of each policy trained at a time, but static copies of each policy at different phases of training are maintained and used to generate training data.  Training proceeds in rounds, where we first compute the Nash equilibrium of the meta-game over the existing static policies.  Each policy is then trained against static opponent policies drawn from this distribution.
+
+At the end of each round, we save copies of the current states of the training policies, and add them to the set of policies available to each agent.  Finally, we need to expand the payoff matrix of the meta game
+
+**Generic Training Strategies**
+
+A generic way to implement training strategies is to provide a distribution over policies to train against in each "round", where one round can span multiple calls to the 'train' method.  Different distributions would correspond to different strategies:
+- Independent training always trains against other learning policies
+- Self-play trains against the most recent checkpoint
+- Fictitious play trains against a uniform distribution over previous checkpoints
+- PSRO/PNM plays against a Nash equilibrium of previous checkpoints
+
+For PSRO, we also need a mechanism to collect policy evaluation data to update the meta-game.  A simple way to implement this is to allow the meta-strategy to generate a list of 'to_evaluate' multi-agent configs, and allows evaluation data to be passed in when we update the training distribution.

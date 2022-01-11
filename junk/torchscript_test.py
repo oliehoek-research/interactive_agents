@@ -190,7 +190,7 @@ if __name__ == "__main__":
     num_demonstrations = 1024
     batch_size = 32
     hidden_size = 10
-    training_epochs = 5000
+    training_epochs = 3000
     eval_interval = 100
     eval_episodes = 128
     
@@ -237,5 +237,13 @@ if __name__ == "__main__":
 
     mean_reward, success_rate = evaluate(env, model, eval_episodes)
     print(f"\n----- Serialized Model -----")
+    print(f"    mean return: {mean_reward}")
+    print(f"    success rate: {success_rate * 100}%")
+
+    # Copy model
+    model.eval()
+    model = torch.jit.freeze(model, ["get_h0"])
+    mean_reward, success_rate = evaluate(env, model, eval_episodes)
+    print(f"\n----- Frozen Model -----")
     print(f"    mean return: {mean_reward}")
     print(f"    success rate: {success_rate * 100}%")
