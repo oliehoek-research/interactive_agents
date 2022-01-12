@@ -77,13 +77,13 @@ class FrozenPolicy:
         class Agent:
 
             def __init__(self, model):
-                self._state = model.initial_state()
+                self._state = model.initial_state(batch_size=1)
                 self._model = model
 
             def act(self, obs):
-                obs = torch.as_tensor(obs, dtype=torch.float32)
+                obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
                 action, self._state = self._model(obs, self._state)
-                return action, {}
+                return action.squeeze(0).numpy(), {}
 
         return Agent(self._model)
 
