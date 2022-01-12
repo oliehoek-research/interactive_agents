@@ -11,7 +11,7 @@ import traceback
 import yaml
 
 from interactive_agents.grid_search import grid_search
-from interactive_agents.learning import get_trainer_class
+from interactive_agents.training import get_trainer_class
 
 
 def make_unique_dir(path, tag):
@@ -61,10 +61,6 @@ def run_trail(path, trainer_cls, config, stop, seed):
 
     dataframe = pandas.DataFrame(results)
     dataframe.to_csv(results_file)
-
-    # Checkpoint learning
-    with open(os.path.join(path, "checkpoint.pickle"), 'wb') as state_file:
-        pickle.dump(trainer.get_state(), state_file)
     
     # Export policies
     path = os.path.join(path, "policies")

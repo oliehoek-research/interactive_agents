@@ -2,6 +2,8 @@
 from collections import defaultdict
 import numpy as np
 
+import torch
+
 class MultiBatch:
     """Represents a multi-agent experience batch"""
 
@@ -49,10 +51,10 @@ class MultiBatch:
         for agent_id in obs.keys():
             episode = self._agent_episodes[agent_id]
 
-            episode[MultiBatch.OBS].append(obs)
-            episode[MultiBatch.ACTION].append(actions)
-            episode[MultiBatch.REWARD].append(rewards)
-            episode[MultiBatch.DONE].append(dones)
+            episode[MultiBatch.OBS].append(obs[agent_id])
+            episode[MultiBatch.ACTION].append(actions[agent_id])
+            episode[MultiBatch.REWARD].append(rewards[agent_id])
+            episode[MultiBatch.DONE].append(dones[agent_id])
             
             for key, value in fetches[agent_id].items():                
                 episode[key].append(value)
@@ -67,27 +69,30 @@ class MultiBatch:
 class FrozenPolicy:
     """Wrapper for frozen Torch policies"""
 
-    class Agent:
-
-        def __init__(self):
-            self._state = self._model.initial_state()
-
-        def act(self, obs):
-            action, self._state = self._model(obs, self._state)
-            return action, {}
-
     def __init__(self, model):
         self._model = model
 
     def make_agent(self):
-        return self.Agent()
+
+        class Agent:
+
+            def __init__(self, model):
+                self._state = model.initial_state()
+                self._model = model
+
+            def act(self, obs):
+                obs = torch.as_tensor(obs, dtype=torch.float32)
+                action, self._state = self._model(obs, self._state)
+                return action, {}
+
+        return Agent(self._model)
 
     def update(self, update):
         """Dummy to make sure we are not trying to update frozen polices"""
         raise NotImplementedError("Frozen policies cannot be updated")
 
 
-def sample(self, env, policies, num_episodes, max_steps, policy_map=None):
+def sample(env, policies, num_episodes, max_steps, policy_map=None):
     """Generates a batch of episodes"""
     batch = MultiBatch()
     total_steps = 0
@@ -98,7 +103,7 @@ def sample(self, env, policies, num_episodes, max_steps, policy_map=None):
 
         agents = {}
         dones = {}
-        for agent_id, ob in obs.keys():
+        for agent_id in obs.keys():
             if policy_map is not None:
                 policy_id = policy_map[agent_id]
             else:
@@ -108,7 +113,7 @@ def sample(self, env, policies, num_episodes, max_steps, policy_map=None):
             dones[agent_id] = False
 
         batch.start_episode(policy_map)
-        batch.write(MultiBatch.OBS, obs)
+        batch.append(MultiBatch.OBS, obs)
 
         while step < max_steps and not all(dones.values()):
             actions = {}
@@ -125,12 +130,12 @@ def sample(self, env, policies, num_episodes, max_steps, policy_map=None):
         total_steps += step
     
     stats = {"mean_reward": 0}
-    for policy_id, batch in batch.items():
+    for policy_id, agent_batch in batch.items():
         mean_reward = 0
-        for rewards in batch[MultiBatch.REWARD]:
-            mean_reward += np.sum(rewards)
+        for episode in agent_batch:
+            mean_reward += np.sum(episode[MultiBatch.REWARD])
 
-        mean_reward /= len(batch[MultiBatch.REWARD])
+        mean_reward /= len(agent_batch)
         stats[str(policy_id) + "/mean_reward"] = mean_reward
         stats["mean_reward"] += mean_reward
 

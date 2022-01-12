@@ -1,6 +1,6 @@
 """Simple Trainer that runs independent learners for each agent"""
 from interactive_agents.envs import get_env_class
-from interactive_agents.learning import get_learner_class
+from interactive_agents.training.learners import get_learner_class
 from interactive_agents.sampling import sample
 from interactive_agents.stopwatch import Stopwatch
 
@@ -93,7 +93,7 @@ class IndependentTrainer:
         watch.reset()
         for id, episodes in batch.items():
             watch.start()
-            batch_stats = self._learners.learn(episodes)
+            batch_stats = self._learners[id].learn(episodes)
             watch.stop()
 
             for key, value in batch_stats.items():

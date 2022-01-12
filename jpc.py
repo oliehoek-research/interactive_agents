@@ -6,13 +6,13 @@ from multiprocessing import Pool
 import numpy as np
 import os
 import os.path
-import pickle
 import traceback
 import yaml
 
+import torch
+
 from interactive_agents.envs import get_env_class
-from interactive_agents.learning import get_trainer_class
-from interactive_agents.sampling import Sampler
+from interactive_agents.sampling import sample, FrozenPolicy
 
 # TODO: Tensorflow models seem to hang when we try to run them in a distributed fashion, need to initialize models separately in each thread like pytorch does
 
@@ -26,9 +26,9 @@ def parse_args():
     parser.add_argument("path", type=str, help="path to directory containing training results")
     parser.add_argument("-o", "--output-path", type=str, default=None,
                         help="directory in which we should save matrix (defaults to experiment directory)")
-    parser.add_argument("-n", "--num-cpus", type=int, default=4,
+    parser.add_argument("-n", "--num-cpus", type=int, default=1,
                         help="the number of parallel worker processes to launch")
-    parser.add_argument("-e", "--num-episodes", type=int, default=4,
+    parser.add_argument("-e", "--num-episodes", type=int, default=100,
                         help="the number of episodes to run for each policy combination")
 
 
@@ -36,7 +36,7 @@ def parse_args():
 
 
 def load_populations(path):
-    populations = {}
+    populations = defaultdict(dict)
     config_path = os.path.join(path, "config.yaml")
     
     if not os.path.isfile(config_path):
@@ -45,34 +45,37 @@ def load_populations(path):
     with open(config_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    if "trainer" not in config:
+    if "trainer" not in config:  # NOTE: When would this be needed?
         config = list(config.values())[0]
 
-    trainer_cls = get_trainer_class(config.get("trainer", "independent"))
     trainer_config = config.get("config", {})
 
+    env_name = trainer_config.get("env")
+    env_config = trainer_config.get("env_config", {})
+
+    env_cls = get_env_class(env_name)
+    env = env_cls(env_config, spec_only=True)
+
     for seed in range(config.get("num_seeds", 1)):
-        sub_path = os.path.join(path, f"seed_{seed}")
+        sub_path = os.path.join(path, f"seed_{seed}/policies")
 
         if os.path.isdir(sub_path):
-            state_path = os.path.join(sub_path, "state.pickle")
+            print(f"\nloading path: {sub_path}")
 
-            if os.path.isfile(state_path):
-                with open(state_path, 'rb') as f:
-                    state = pickle.load(f)
+            for policy_id in env.observation_space.keys():
+                policy_path= os.path.join(sub_path, f"{policy_id}.pt")
+                print(f"loading: {policy_path}")
 
-                trainer = trainer_cls(trainer_config)
-                trainer.set_state(state)
-                
-                populations[seed] = trainer.get_policies()
+                if os.path.isfile(policy_path):
+                    model = torch.jit.load(policy_path)
+                    populations[seed][policy_id] = FrozenPolicy(model)
     
     return populations, trainer_config
 
 
-def evaluate(policies, env_name, env_config, num_episodes, max_steps):
-    policy_fn = lambda id: id
-    sampler = Sampler(env_name, env_config, policies, policy_fn, max_steps)
-    _, stats = sampler.sample(num_episodes)
+def evaluate(env_cls, env_config, policies, num_episodes, max_steps):
+    env = env_cls(env_config)
+    _, stats =sample(env, policies, num_episodes, max_steps)
     return stats
 
 
@@ -89,6 +92,7 @@ def permutations(num_agents, num_populations):
 
 def cross_evaluate(populations, config, num_cpus, num_episodes):
 
+    # NOTE: Used as a handle for single-threaded execution
     class dummy_async:
 
         def __init__(self, result):
@@ -121,13 +125,14 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
         for a, p in enumerate(permutation):
             agent_id = agent_ids[a]
             policies[agent_id] = populations[p][agent_id]
-        
+
         idx = tuple(permutation)
         if num_cpus > 1:
-            threads[idx] = pool.apply_async(evaluate, 
-                (policies, env_name, env_config, num_episodes, max_steps), error_callback=print_error)
+            threads[idx] = pool.apply_async(evaluate, (env_cls, env_config, 
+                policies, num_episodes, max_steps), error_callback=print_error)
         else:
-            threads[idx] = dummy_async(evaluate(policies, env_name, env_config, num_episodes, max_steps))
+            threads[idx] = dummy_async(evaluate(env_cls, 
+                env_config, policies, num_episodes, max_steps))
 
     returns = np.zeros(tuple([num_populations] * num_agents))
     for idx, thread in threads.items():
@@ -137,7 +142,6 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
     return returns
 
 
-# NOTE: A major limitation of this approach is that it 
 if __name__ == '__main__':
     args = parse_args()
 
@@ -147,7 +151,7 @@ if __name__ == '__main__':
     print(f"Evaluating Policies")
     jpc = cross_evaluate(populations, config, args.num_cpus, args.num_episodes)
 
-    print("JCP Tensor:")
+    print("\nJCP Tensor:")
     print(jpc)
 
     if args.output_path is not None:
@@ -155,4 +159,5 @@ if __name__ == '__main__':
     else:
         output_path = os.path.join(args.path, "jpc.npy")
 
+    print(f"\nwriting JPC tensor to: {output_path}")
     np.save(output_path, jpc, allow_pickle=False)
