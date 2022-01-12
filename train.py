@@ -21,16 +21,16 @@ def parse_args():
 if __name__ == '__main__':
     args = parse_args()
 
-    if len(args.config_file) > 0:
+    if args.config_file is not None:
         experiments = load_configs(args.config_file)
     else:
         experiments = {
             "DQN_debug": {
                 "stop": {
-                    "total_iterations": 10
+                    "total_iterations": 100
                 },
                 "trainer": "independent",
-                "num_seeds": 2,
+                "num_seeds": 5,
                 "config": {
                     "max_steps": 100,
                     "iteration_episodes": 100,
@@ -41,8 +41,20 @@ if __name__ == '__main__':
                         "actions": 4,
                         "players": 2
                     },
-                    "learner": "R2D2",
-                    "learner_config": {},
+                    "learner": "DQN",
+                    "learner_config": {
+                        "batch_size": 4,
+                        "batches_per_episode": 1,
+                        "sync_interval": 100,
+                        "epsilon": 0.05,
+                        "gamma": 0.99,
+                        "beta": 0.5,
+                        "hiddens": [64],
+                        "dueling": True,
+                        "compile": True,
+                        "buffer_size": 1024,
+                        "lr": 0.01,
+                    },
                 }
             }
         }
