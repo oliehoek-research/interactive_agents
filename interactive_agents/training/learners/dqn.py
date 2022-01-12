@@ -34,7 +34,6 @@ class QNet(nn.Module):
             self._value_function = nn.Linear(last_size, 1)
 
     def forward(self, obs):
-        obs = torch.flatten(obs, start_dim=1, end_dim=-1)
         output = self._hidden(obs)
         Q = self._q_function(output)
 
@@ -53,11 +52,11 @@ class QPolicy(nn.Module):
         self._model = model
 
     def forward(self, obs, state: Optional[torch.Tensor]):
-        return self._model(obs).argmax(-1)
+        return self._model(obs).argmax(-1), state
     
     @torch.jit.export
-    def initial_state(self):
-        return torch.empty((0,)) # NOTE: Return empty tensor for Torchscript
+    def initial_state(self, batch_size: int=1):
+        return torch.empty((batch_size, 0)) # NOTE: Return empty tensor for Torchscript
 
 
 class ReplayBuffer:
