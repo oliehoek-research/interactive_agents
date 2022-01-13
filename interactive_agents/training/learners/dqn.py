@@ -1,7 +1,7 @@
-"""Torch implementation of DQN compatible with training framework"""
+"""Simple Torch implementation of DQN"""
 from math import ceil
 import numpy as np
-from typing import Optional, Tuple
+from typing import Optional
 
 import torch
 import torch.nn as nn
@@ -129,8 +129,8 @@ class DQNPolicy:
 
         return q_values.reshape([-1]).argmax().item()
 
-    def update(self, data):
-        self._q_network.load_state_dict(data)
+    def update(self, state):
+        self._q_network.load_state_dict(state)
 
 
 class DQN:
@@ -177,15 +177,6 @@ class DQN:
 
         errors = nn.functional.smooth_l1_loss(online_q, q_targets.detach(), beta=self._beta, reduction='none')
         return torch.mean(errors)
-
-    def _update(self):
-        batch = self._replay_buffer.sample(self._batch_size)
-        self._optimizer.zero_grad()
-        loss = self._loss(*batch).mean()
-        loss.backward()
-        self._optimizer.step()
-
-        return {}
 
     def learn(self, episodes):
         num_episodes = len(episodes)

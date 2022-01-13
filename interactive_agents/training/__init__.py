@@ -1,7 +1,9 @@
 from interactive_agents.training.independent import IndependentTrainer
+from interactive_agents.training.regret_game import RegretGameTrainer
 
 TRAINERS = {
     "independent": IndependentTrainer,
+    "regret_game": RegretGameTrainer,
 }
 
 def get_trainer_class(name):

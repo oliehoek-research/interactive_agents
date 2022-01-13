@@ -25,11 +25,15 @@ if __name__ == '__main__':
         experiments = load_configs(args.config_file)
     else:
         experiments = {
-            "DQN_debug": {
+            # "DQN_debug": {
+            # "R2D2_debug": {
+            # "other_play_debug": {
+            "regret_game_debug": {
                 "stop": {
                     "total_iterations": 100
                 },
-                "trainer": "independent",
+                # "trainer": "independent",
+                "trainer": "regret_game",
                 "num_seeds": 5,
                 "config": {
                     "max_steps": 100,
@@ -39,9 +43,14 @@ if __name__ == '__main__':
                     "env_config": {
                         "stages": 5,
                         "actions": 4,
-                        "players": 2
+                        "players": 2,
+                        "focal_point": True,
+                        "other_play": False,
                     },
-                    "learner": "DQN",
+                    "learner_id": 0,
+                    "partner_id": 1,
+                    # "learner": "DQN",
+                    "learner": "R2D2",
                     "learner_config": {
                         "batch_size": 4,
                         "batches_per_episode": 1,
