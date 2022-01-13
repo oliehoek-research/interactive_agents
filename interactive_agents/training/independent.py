@@ -125,15 +125,3 @@ class IndependentTrainer:
             policies[id] = learner.export_policy()
         
         return policies
-    
-    def get_state(self):
-        state = {}
-        for id, learner in self._learners.items():
-            state[id] = learner.get_state()
-        
-        return state
-    
-    def set_state(self, state):
-        for id, learner in self._learners.items():
-            if id in state:
-                learner.set_state(state[id])

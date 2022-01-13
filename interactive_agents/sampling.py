@@ -81,9 +81,15 @@ class FrozenPolicy:
                 self._model = model
 
             def act(self, obs):
-                obs = torch.as_tensor(obs, dtype=torch.float32).unsqueeze(0)
+                obs = torch.as_tensor(obs, dtype=torch.float32)
+                obs = obs.unsqueeze(0)  # NOTE: Add batch dimension
+                obs = obs.unsqueeze(0)  # NOTE: Add time dimension (for RNNs)
+
                 action, self._state = self._model(obs, self._state)
-                return action.squeeze(0).numpy(), {}
+                action.squeeze(0)  # NOTE: Remove time dimension
+                action.squeeze(0)  # NOTE: Remove batch dimension
+                
+                return action.numpy(), {}
 
         return Agent(self._model)
 

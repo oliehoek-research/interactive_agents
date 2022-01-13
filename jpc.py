@@ -2,6 +2,7 @@
 '''Computes the Joint Policy Correlation matrix for a set of trained policies'''
 import argparse
 from collections import defaultdict
+import io
 from multiprocessing import Pool
 import numpy as np
 import os
@@ -14,7 +15,6 @@ import torch
 from interactive_agents.envs import get_env_class
 from interactive_agents.sampling import sample, FrozenPolicy
 
-# TODO: Tensorflow models seem to hang when we try to run them in a distributed fashion, need to initialize models separately in each thread like pytorch does
 
 def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
@@ -30,12 +30,40 @@ def parse_args():
                         help="the number of parallel worker processes to launch")
     parser.add_argument("-e", "--num-episodes", type=int, default=100,
                         help="the number of episodes to run for each policy combination")
-
+    parser.add_argument("-m", "--map", nargs="+")
 
     return parser.parse_args()
 
 
-def load_populations(path):
+def load_config(path, map):
+    config_path = os.path.join(path, "config.yaml")
+    
+    if not os.path.isfile(config_path):
+        raise ValueError(f"Config File: '{config_path}' not defined")
+
+    with open(config_path, "r") as f:
+        config = yaml.load(f, Loader=yaml.FullLoader)
+
+    if "trainer" not in config:  # NOTE: When would this be needed?
+        config = list(config.values())[0]
+
+    trainer_config = config.get("config", {})
+
+    if map is None:
+        env_name = trainer_config.get("env")
+        env_config = trainer_config.get("env_config", {})
+
+        env_cls = get_env_class(env_name)
+        env = env_cls(env_config, spec_only=True)
+
+        map = {}
+        for policy_id in env.observation_space.keys():
+            map[policy_id] = policy_id
+
+    return trainer_config, map, config.get("num_seeds", 1)
+
+
+def load_populations(path, policy_map):
     populations = defaultdict(dict)
     config_path = os.path.join(path, "config.yaml")
     
@@ -50,11 +78,27 @@ def load_populations(path):
 
     trainer_config = config.get("config", {})
 
-    env_name = trainer_config.get("env")
-    env_config = trainer_config.get("env_config", {})
+    if policy_map is None:
+        env_name = trainer_config.get("env")
+        env_config = trainer_config.get("env_config", {})
 
-    env_cls = get_env_class(env_name)
-    env = env_cls(env_config, spec_only=True)
+        env_cls = get_env_class(env_name)
+        env = env_cls(env_config, spec_only=True)
+
+        map = {}
+        for policy_id in env.observation_space.keys():
+            map[policy_id] = policy_id
+    else:
+        map = {}
+
+        for idx in range(0, len(policy_map), 2):
+            agent_id = policy_map[idx]
+            policy_id = policy_map[idx + 1]
+
+            if agent_id.isnumeric():
+                agent_id = int(agent_id)
+
+            map[agent_id] = policy_id
 
     for seed in range(config.get("num_seeds", 1)):
         sub_path = os.path.join(path, f"seed_{seed}/policies")
@@ -62,20 +106,34 @@ def load_populations(path):
         if os.path.isdir(sub_path):
             print(f"\nloading path: {sub_path}")
 
-            for policy_id in env.observation_space.keys():
-                policy_path= os.path.join(sub_path, f"{policy_id}.pt")
+            for agent_id, policy_id in map.items():
+                policy_path = os.path.join(sub_path, f"{policy_id}.pt")
                 print(f"loading: {policy_path}")
 
                 if os.path.isfile(policy_path):
                     model = torch.jit.load(policy_path)
-                    populations[seed][policy_id] = FrozenPolicy(model)
+                    populations[seed][agent_id] = model
+                else:
+                    raise FileNotFoundError(f"seed '{seed}' does not define policy '{policy_id}'")
     
     return populations, trainer_config
 
 
-def evaluate(env_cls, env_config, policies, num_episodes, max_steps):
+def evaluate(env_cls, env_config, models, num_episodes, max_steps):
+
+    # Build environment instance
     env = env_cls(env_config)
-    _, stats =sample(env, policies, num_episodes, max_steps)
+
+    # Instantiate policies
+    policies = {}
+    for id, model in models.items():
+        if isinstance(model, io.BytesIO):
+            model.seek(0)
+            model = torch.jit.load(model)
+        
+        policies[id] = FrozenPolicy(model)
+
+    _, stats = sample(env, policies, num_episodes, max_steps)
     return stats
 
 
@@ -121,18 +179,25 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
 
     threads = {}
     for permutation in permutations(num_agents, num_populations):
-        policies = {}
+        models = {}
         for a, p in enumerate(permutation):
             agent_id = agent_ids[a]
-            policies[agent_id] = populations[p][agent_id]
+            models[agent_id] = populations[p][agent_id]
 
         idx = tuple(permutation)
         if num_cpus > 1:
+
+            # Serialize torch policies
+            for id, model in models.items():
+                buffer = io.BytesIO()
+                torch.jit.save(model, buffer)
+                models[id] = buffer
+
             threads[idx] = pool.apply_async(evaluate, (env_cls, env_config, 
-                policies, num_episodes, max_steps), error_callback=print_error)
+                models, num_episodes, max_steps), error_callback=print_error)
         else:
             threads[idx] = dummy_async(evaluate(env_cls, 
-                env_config, policies, num_episodes, max_steps))
+                env_config, models, num_episodes, max_steps))
 
     returns = np.zeros(tuple([num_populations] * num_agents))
     for idx, thread in threads.items():
@@ -146,7 +211,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     print(f"Loading policies from: {args.path}")
-    populations, config = load_populations(args.path)
+    populations, config = load_populations(args.path, args.map)
 
     print(f"Evaluating Policies")
     jpc = cross_evaluate(populations, config, args.num_cpus, args.num_episodes)
