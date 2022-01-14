@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Script to select the best configuration from a hyperparameter sweep'''
+"""Script to select the best configuration from a hyperparameter sweep"""
 import argparse
 import json
 import numpy as np

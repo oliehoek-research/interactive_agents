@@ -13,11 +13,11 @@ from interactive_agents.sampling import MultiBatch
 class LSTMNet(nn.Module):
     """LSTM-based Q-Network with optional deuling architecture"""
     
-    def __init__(self, obs_space, action_space, hidden_size, hidden_layers, deuling):
+    def __init__(self, obs_space, action_space, hidden_size, hidden_layers, dueling):
         super(LSTMNet, self).__init__()
         self._hidden_size = hidden_size
         self._hidden_layers = hidden_layers
-        self._deuling = deuling
+        self._dueling = dueling
 
         # NOTE: Separate variables needed for Torchscript
         input_size = obs_space.shape[0]
@@ -26,7 +26,7 @@ class LSTMNet(nn.Module):
         self._lstm = nn.LSTM(input_size, hidden_size, hidden_layers)
         self._q_function = nn.Linear(hidden_size, output_size)
 
-        if deuling:
+        if dueling:
             self._value_function = nn.Linear(hidden_size, 1)
 
     def forward(self, 
@@ -35,7 +35,7 @@ class LSTMNet(nn.Module):
         outputs, state = self._lstm(obs, state)
         Q = self._q_function(outputs)
 
-        if self._deuling:
+        if self._dueling:
             V = self._value_function(outputs)
             Q += V - Q.mean(2, keepdim=True)
 

@@ -2,12 +2,39 @@
 import gym
 from gym.spaces import Discrete, Box
 import numpy as np
+import time
 import torch
-from torch._C import TensorType
-from torch.functional import Tensor
 import torch.nn as nn
 from torch.optim import Adam
 from typing import Optional, Tuple
+
+
+class Stopwatch:
+
+    def __init__(self):
+        self._started = None
+        self._elapsed = 0
+
+    def start(self):
+        if self._started is None:
+            self._started = time.time()
+
+    def restart(self):
+        self._elapsed = 0
+        self._started = time.time()
+
+    def stop(self):
+        stopped = time.time()
+        if self._started is not None:
+            self._elapsed += stopped - self._started
+            self._started = None
+
+    def reset(self):
+        self._elapsed = 0
+        self._started = None
+
+    def elapsed(self):
+        return self._elapsed
 
 
 class LSTMNet(nn.Module):
@@ -357,10 +384,13 @@ class CoordinationGame(gym.Env):
 
 
 if __name__ == "__main__":
-    training_epochs = 300
+    stopwatch = Stopwatch()
+    stopwatch.start()
 
-    # env = MemoryGame(20, 8)
-    env = CoordinationGame(20, 16, ['fixed'])
+    training_epochs = 1000
+
+    env = MemoryGame(10, 4)
+    # env = CoordinationGame(20, 16, ['fixed'])
     agent = R2D2(env)
 
     print("\n===== Training =====")
@@ -373,13 +403,16 @@ if __name__ == "__main__":
         print(f"    mean return: {mean_reward}")
         print(f"    success rate: {success_rate * 100}%")
     
-    agent.save("torch_r2d2.pt")
+    # agent.save("torch_r2d2.pt")
 
-    model = torch.jit.load("torch_r2d2.pt")
-    policy = Policy(model)
+    # model = torch.jit.load("torch_r2d2.pt")
+    # policy = Policy(model)
 
-    mean_reward, success_rate = evaluate(env, policy)
+    # mean_reward, success_rate = evaluate(env, policy)
 
-    print(f"\n----- Serialized Model -----")
-    print(f"    mean return: {mean_reward}")
-    print(f"    success rate: {success_rate * 100}%")
+    # print(f"\n----- Serialized Model -----")
+    # print(f"    mean return: {mean_reward}")
+    # print(f"    success rate: {success_rate * 100}%")
+
+    stopwatch.stop()
+    print(f"\nElapsed Time: {stopwatch.elapsed()}s")
