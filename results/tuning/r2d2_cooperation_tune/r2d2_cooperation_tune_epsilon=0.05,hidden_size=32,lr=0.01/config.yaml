@@ -1,0 +1,27 @@
+r2d2_cooperation_tune_epsilon=0.05,hidden_size=32,lr=0.01:
+  config:
+    env: coordination
+    env_config:
+      actions: 10
+      players: 2
+      stages: 10
+    eval_episodes: 10
+    iteration_episodes: 100
+    learner: R2D2
+    learner_config:
+      batch_size: 4
+      batches_per_episode: 1
+      beta: 0.5
+      buffer_size: 2048
+      dueling: true
+      epsilon: 0.05
+      gamma: 0.99
+      hidden_layers: 1
+      hidden_size: 32
+      lr: 0.01
+      sync_interval: 100
+    max_steps: 20
+  num_seeds: 4
+  stop:
+    total_iterations: 100
+  trainer: independent
