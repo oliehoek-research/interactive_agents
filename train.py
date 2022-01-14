@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-'''Simple script for launching experiments'''
+"""Simple script for launching experiments"""
 import argparse
 
 from interactive_agents.core import load_configs, run_experiments
