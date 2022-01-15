@@ -1,10 +1,11 @@
 from collections import defaultdict
+from datetime import datetime
+from git import Repo
 from multiprocessing import Pool
 import numpy as np
 import os
 import os.path
 import pandas
-import pickle
 import random
 import torch
 import traceback
@@ -79,6 +80,21 @@ def run_experiment(path, name, config, pool):
     # Save experiment configuration
     with open(os.path.join(path, "config.yaml"), 'w') as config_file:
         yaml.dump({name: config}, config_file)
+
+    # Save experiment metadata
+    metadata = {}
+
+    d = datetime.utcnow()
+    metadata["timestamp"] = d.isoformat()
+
+    try:
+        repo = Repo(search_parent_directories=True)
+        metadata["git_commit"] = repo.active_branch.commit
+    except:
+        pass
+
+    with open(os.path.join(path, "metadata.yaml"), 'w') as metadata_file:
+        yaml.dump(metadata, metadata_file)
 
     # Get trainer class and config
     trainer_cls = get_trainer_class(config.get("trainer", "independent"))

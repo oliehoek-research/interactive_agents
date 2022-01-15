@@ -14,7 +14,7 @@ class GymEnv:
     
     def reset(self):
         obs = self.env.reset()
-        return {self._agent_id, obs}
+        return {self._agent_id: obs}
     
     def step(self, action):
         obs, rew, done, info = self.env.step(action[self._agent_id])

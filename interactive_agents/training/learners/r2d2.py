@@ -71,7 +71,7 @@ class LSTMPolicy(nn.Module):
 class ReplayBuffer:
     """Replay buffer which samples batches of episode rather than steps"""
 
-    def __init__(self, capacity=128):
+    def __init__(self, capacity):
         self._buffer = []
         self._capacity = capacity
         self._index = 0

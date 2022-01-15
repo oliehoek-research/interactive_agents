@@ -22,12 +22,15 @@ class RegretGameTrainer:
 
         env_name = config.get("env")
         env_config = config.get("env_config", {})
+        env_eval_config = config.get("env_eval_config", env_config)
         env_cls = get_env_class(env_name)
 
         # Build environment - get observation and action spaces
         self._env = env_cls(env_config, spec_only=False)
         obs_spaces = self._env.observation_space
         action_spaces = self._env.action_space
+
+        self._eval_env = env_cls(env_eval_config, spec_only=False)
 
         assert len(obs_spaces.keys()) == 2, "regret games are only defined for two-player games"
 
@@ -57,7 +60,7 @@ class RegretGameTrainer:
                 cls_name = config.get(pid)
                 conf = config.get(f"{pid}_config", {})
             else:
-                cls_name = config.get("learner", "DQN")
+                cls_name = config.get("learner", "R2D2")
                 conf = config.get("learner_config", {})
 
             cls = get_learner_class(cls_name)
@@ -176,10 +179,10 @@ class RegretGameTrainer:
             self._eval_policies[id].update(learner.get_update(eval=True))
 
         # Run evaluation episodes
-        _, learner_eval_stats = sample(self._env, self._eval_policies,
+        _, learner_eval_stats = sample(self._eval_env, self._eval_policies,
              self._learner_eval_episodes, self._max_steps, self._learner_map)
 
-        _, partner_eval_stats = sample(self._env, self._eval_policies,
+        _, partner_eval_stats = sample(self._eval_env, self._eval_policies,
              self._partner_eval_episodes, self._max_steps, self._partner_map)
 
         for key, value in learner_eval_stats.items():

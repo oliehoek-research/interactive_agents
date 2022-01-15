@@ -1,30 +1,27 @@
-r2d2_cooperation_tune:
+r2d2_cartpole_tune:
   stop:
     total_iterations: 100
   trainer: independent
-  num_seeds: 4
+  num_seeds: 1
   config:
-    max_steps: 20
+    max_steps: 100
     iteration_episodes: 100
     eval_episodes: 10
-    env: coordination
+    env: gym
     env_config:
-      stages: 10
-      actions: 10
-      players: 2
+      name: CartPole-v1
     learner: R2D2
     learner_config:
-      batch_size: 4
-      batches_per_episode: 1
+      batch_size: 8
+      batches_per_episode: 0.5
       sync_interval: 100
-      epsilon:
+      epsilon: 
         grid_search: [0.01, 0.05]
       gamma: 0.99
       beta: 0.5
       lr:
         grid_search: [0.001, 0.01]
-      hidden_size:
-        grid_search: [32, 64]
+      hidden_size: 32
       hidden_layers: 1
       dueling: True
       buffer_size: 2048
