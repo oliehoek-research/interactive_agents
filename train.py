@@ -26,15 +26,15 @@ if __name__ == '__main__':
     else:
         experiments = {
             # "DQN_debug": {
-            # "R2D2_debug": {
+            "R2D2_debug": {
             # "other_play_debug": {
-            "regret_game_debug": {
+            # "regret_game_debug": {
                 "stop": {
                     "total_iterations": 100
                 },
-                # "trainer": "independent",
-                "trainer": "regret_game",
-                "num_seeds": 5,
+                "trainer": "independent",
+                # "trainer": "regret_game",
+                "num_seeds": 2,
                 "config": {
                     "max_steps": 100,
                     "iteration_episodes": 100,

@@ -1,4 +1,4 @@
-r2d2_coordination:
+r2d2_otherplay_coordination:
   stop:
     total_iterations: 300
   trainer: independent
@@ -12,6 +12,12 @@ r2d2_coordination:
       stages: 10
       actions: 10
       players: 2
+      other_play: True
+    env_eval_config:
+      stages: 10
+      actions: 10
+      players: 2
+      other_play: False
     learner: R2D2
     learner_config:
       batch_size: 4

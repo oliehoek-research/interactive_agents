@@ -81,6 +81,7 @@ def load_populations(path, policy_map):
     if policy_map is None:
         env_name = trainer_config.get("env")
         env_config = trainer_config.get("env_config", {})
+        env_config = trainer_config.get("env_eval_config", env_config)
 
         env_cls = get_env_class(env_name)
         env = env_cls(env_config, spec_only=True)

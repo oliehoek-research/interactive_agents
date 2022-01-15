@@ -1,27 +1,24 @@
-r2d2_coordination:
+dqn_cartpole:
   stop:
     total_iterations: 300
   trainer: independent
-  num_seeds: 10
+  num_seeds: 5
   config:
-    max_steps: 20
+    max_steps: 200
     iteration_episodes: 100
     eval_episodes: 10
-    env: coordination
+    env: gym
     env_config:
-      stages: 10
-      actions: 10
-      players: 2
-    learner: R2D2
+      name: CartPole-v1
+    learner: DQN
     learner_config:
       batch_size: 4
       batches_per_episode: 0.25
       sync_interval: 100
-      epsilon: 0.01
+      epsilon: 0.2
       gamma: 0.99
       beta: 0.5
       lr: 0.001
-      hidden_size: 32
-      hidden_layers: 1
+      hiddens: [32]
       dueling: True
-      buffer_size: 2048
+      buffer_size: 1024

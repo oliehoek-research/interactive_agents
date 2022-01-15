@@ -1,4 +1,4 @@
-r2d2_cooperation_tune:
+r2d2_coordination_tune:
   stop:
     total_iterations: 100
   trainer: independent

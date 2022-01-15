@@ -18,12 +18,15 @@ class IndependentTrainer:
 
         env_name = config.get("env")
         env_config = config.get("env_config", {})
+        env_eval_config = config.get("env_eval_config", env_config)
         env_cls = get_env_class(env_name)
 
         # Build environment - get observation and action spaces
         self._env = env_cls(env_config, spec_only=False)
         obs_space = self._env.observation_space
         action_space = self._env.action_space
+
+        self._eval_env = env_cls(env_eval_config, spec_only=False)
 
         # Get learner class and config
         if "learner" not in config:
@@ -107,7 +110,7 @@ class IndependentTrainer:
             self._eval_policies[id].update(learner.get_update(eval=True))
 
         # Run evaluation episodes
-        _, eval_stats = sample(self._env, self._eval_policies,
+        _, eval_stats = sample(self._eval_env, self._eval_policies,
              self._eval_episodes, self._max_steps, self._policy_map)
 
         for key, value in eval_stats.items():

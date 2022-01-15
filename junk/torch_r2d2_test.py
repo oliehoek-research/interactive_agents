@@ -76,9 +76,10 @@ class LSTMNet(nn.Module):
 
 class ReplayBuffer:
     
-    def __init__(self, action_space, capacity=128):
+    def __init__(self, action_space, capacity=128, device='cpu'):
         self._action_space = action_space
         self._capacity = capacity
+        self._device = device
 
         self._index = 0
         self._obs = []
@@ -87,11 +88,11 @@ class ReplayBuffer:
         self._dones = []
     
     def add(self, obs, actions, rewards, dones):
-        obs = torch.tensor(obs, dtype=torch.float32)
-        actions = torch.tensor(actions, dtype=torch.int64)
+        obs = torch.tensor(obs, dtype=torch.float32, device=self._device)
+        actions = torch.tensor(actions, dtype=torch.int64, device=self._device)
         actions = nn.functional.one_hot(actions, self._action_space.n)
-        rewards = torch.tensor(rewards, dtype=torch.float32)
-        dones = torch.tensor(dones, dtype=torch.float32)
+        rewards = torch.tensor(rewards, dtype=torch.float32, device=self._device)
+        dones = torch.tensor(dones, dtype=torch.float32, device=self._device)
 
         if len(obs) < self._capacity:
             self._obs.append(obs)
@@ -157,7 +158,8 @@ class R2D2:
                 lr=0.01,
                 hidden_size=64,
                 hidden_layers=1,
-                deuling=True):
+                deuling=True,
+                device='cpu'):
         self._env = env
         self._num_episodes = num_episodes
         self._batch_size = batch_size
@@ -166,14 +168,19 @@ class R2D2:
         self._epsilon = epsilon
         self._gamma = gamma
         self._beta = beta
-        
-        self._replay_buffer = ReplayBuffer(env.action_space, buffer_size)
+        self._device = device
+
+        self._replay_buffer = ReplayBuffer(env.action_space, buffer_size, device)
 
         self._online_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, deuling)
         self._target_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, deuling)
         
         self._online_network = torch.jit.script(self._online_network)
         self._target_network = torch.jit.script(self._target_network)
+
+        # Optional: move models to GPU
+        self._online_network.to(device)
+        self._target_network.to(device)
         
         self._optimizer = Adam(self._online_network.parameters(), lr=lr)
         self._iterations = 0
@@ -182,6 +189,7 @@ class R2D2:
 
     def _loss(self, obs_batch, next_obs_batch, action_batch, reward_batch, done_batch, mask):
         h0 = self._online_network.get_h0(obs_batch.shape[1])
+        h0 = (h0[0].to(self._device), h0[1].to(self._device))
         online_q, _ = self._online_network(obs_batch, h0)  # Need batched history
         target_q, _ = self._target_network(next_obs_batch, h0)
 
@@ -193,6 +201,7 @@ class R2D2:
 
     def reset(self, batch_size=1):
         self._state = self._online_network.get_h0(batch_size)
+        self._state = (self._state[0].to(self._device), self._state[1].to(self._device))
 
     def act(self, obs, explore=True):
         q_values, self._state = self._online_network(obs.reshape([1,1,-1]), self._state)
@@ -220,7 +229,7 @@ class R2D2:
             done = False
 
             while not done:
-                action = self.act(torch.as_tensor(obs, dtype=torch.float32))
+                action = self.act(torch.as_tensor(obs, dtype=torch.float32, device=self._device))
                 obs, reward, done, _ = self._env.step(action)
 
                 observations.append(obs)
@@ -241,7 +250,7 @@ class R2D2:
         torch.jit.save(self._online_network, path)
 
 
-def evaluate(env, policy, num_episodes=30):
+def evaluate(env, policy, num_episodes=30, device='cpu'):
     total_reward = 0
     total_successes = 0
 
@@ -252,7 +261,7 @@ def evaluate(env, policy, num_episodes=30):
         done = False
 
         while not done:
-            action = policy.act(torch.as_tensor(obs, dtype=torch.float32), explore=False)
+            action = policy.act(torch.as_tensor(obs, dtype=torch.float32, device=device), explore=False)
             obs, reward, done, _ = env.step(action)
             episode_reward += reward
         
@@ -384,20 +393,22 @@ class CoordinationGame(gym.Env):
 
 
 if __name__ == "__main__":
+    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+
     stopwatch = Stopwatch()
     stopwatch.start()
 
-    training_epochs = 1000
+    training_epochs = 500
 
     env = MemoryGame(10, 4)
     # env = CoordinationGame(20, 16, ['fixed'])
-    agent = R2D2(env)
+    agent = R2D2(env, device=device)
 
     print("\n===== Training =====")
 
     for epoch in range(training_epochs):
         agent.train()
-        mean_reward, success_rate = evaluate(env, agent)
+        mean_reward, success_rate = evaluate(env, agent, device=device)
 
         print(f"\n----- Epoch {epoch + 1} -----")
         print(f"    mean return: {mean_reward}")
