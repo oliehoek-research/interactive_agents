@@ -1,4 +1,4 @@
-r2d2_cartpole_tune:
+r2d2_cartpole:
   stop:
     total_iterations: 100
   trainer: independent
@@ -15,12 +15,10 @@ r2d2_cartpole_tune:
       batch_size: 8
       batches_per_episode: 0.5
       sync_interval: 100
-      epsilon: 
-        grid_search: [0.01, 0.05]
+      epsilon: 0.01
       gamma: 0.99
       beta: 0.5
-      lr:
-        grid_search: [0.001, 0.01]
+      lr: 0.01
       hidden_size: 32
       hidden_layers: 1
       dueling: True
