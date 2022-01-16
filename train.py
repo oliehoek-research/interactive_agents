@@ -44,7 +44,7 @@ if __name__ == '__main__':
                         "stages": 5,
                         "actions": 4,
                         "players": 2,
-                        "focal_point": True,
+                        "focal_point": False,
                         "other_play": False,
                     },
                     "learner_id": 0,

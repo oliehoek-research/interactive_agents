@@ -1,33 +1,35 @@
 r2d2_otherplay_coordination:
   stop:
-    total_iterations: 300
+    total_iterations: 100
   trainer: independent
-  num_seeds: 10
+  num_seeds: 5
   config:
     max_steps: 20
     iteration_episodes: 100
     eval_episodes: 10
     env: coordination
     env_config:
-      stages: 10
+      stages: 1
       actions: 10
       players: 2
+      focal_point: True
       other_play: True
     env_eval_config:
-      stages: 10
+      stages: 1
       actions: 10
       players: 2
-      other_play: False
+      focal_point: True
+      other_play: True
     learner: R2D2
     learner_config:
-      batch_size: 4
-      batches_per_episode: 0.25
+      batch_size: 8
+      batches_per_episode: 0.5
       sync_interval: 100
       epsilon: 0.01
       gamma: 0.99
       beta: 0.5
-      lr: 0.001
-      hidden_size: 32
+      lr: 0.01
+      hidden_size: 64
       hidden_layers: 1
       dueling: True
       buffer_size: 2048
