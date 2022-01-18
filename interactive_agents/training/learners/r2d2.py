@@ -23,7 +23,12 @@ class LSTMNet(nn.Module):
         input_size = obs_space.shape[0]
         output_size = action_space.n
 
-        self._lstm = nn.LSTM(input_size, hidden_size, hidden_layers)
+        if hidden_layers > 0:
+            self._lstm = nn.LSTM(input_size, hidden_size, hidden_layers)
+        else:
+            self._lstm = None
+            hidden_size = output_size
+        
         self._q_function = nn.Linear(hidden_size, output_size)
 
         if dueling:
@@ -32,12 +37,16 @@ class LSTMNet(nn.Module):
     def forward(self, 
             obs, 
             state: Optional[Tuple[torch.Tensor, torch.Tensor]]):
-        outputs, state = self._lstm(obs, state)
+        if self._lstm is not None:
+            outputs, state = self._lstm(obs, state)
+        else:
+            outputs = obs
+        
         Q = self._q_function(outputs)
 
         if self._dueling:
             V = self._value_function(outputs)
-            Q += V - Q.mean(2, keepdim=True)
+            Q += V - Q.mean(-1, keepdim=True)
 
         return Q, state
 
@@ -122,8 +131,6 @@ class R2D2Policy:
             hidden_layers=1, 
             dueling=True, 
             epsilon=0):
-        assert observation_space is not None, "Must define an observation space"
-        assert action_space is not None, "Must define an action space"
         self._action_space = action_space
         self._epsilon = epsilon
         self._q_network = LSTMNet(observation_space, 

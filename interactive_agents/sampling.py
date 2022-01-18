@@ -96,9 +96,13 @@ class FrozenPolicy:
     def update(self, update):
         """Dummy to make sure we are not trying to update frozen polices"""
         raise NotImplementedError("Frozen policies cannot be updated")
+    
+    @property
+    def model(self):
+        return self._model
 
 
-def sample(env, policies, num_episodes, max_steps, policy_map=None):
+def sample(env, policies, num_episodes, max_steps, policy_fn=None):
     """Generates a batch of episodes"""
     batch = MultiBatch()
     total_steps = 0
@@ -108,17 +112,19 @@ def sample(env, policies, num_episodes, max_steps, policy_map=None):
         step = 0
 
         agents = {}
+        map = {}
         dones = {}
         for agent_id in obs.keys():
-            if policy_map is not None:
-                policy_id = policy_map[agent_id]
+            if policy_fn is not None:
+                policy_id = policy_fn(agent_id)
             else:
                 policy_id = agent_id
             
             agents[agent_id] = policies[policy_id].make_agent()
+            map[agent_id] = policy_id
             dones[agent_id] = False
 
-        batch.start_episode(policy_map)
+        batch.start_episode(map)  # NOTE: Why do we need the policy map
         batch.append(MultiBatch.OBS, obs)
 
         while step < max_steps and not all(dones.values()):

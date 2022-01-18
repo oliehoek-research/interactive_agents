@@ -111,14 +111,15 @@ class CoordinationGame:
         return self._obs()
 
     def step(self, actions):
+        true_actions = actions.copy()  # NOTE: The action array will be used for learning, so don't modify it
         if self._other_play:
             for pid in range(self._num_players):
-                actions[pid] = self._forward_permutations[pid][actions[pid]]
+                true_actions[pid] = self._forward_permutations[pid][actions[pid]]  # NOTE: There was a bug here where we were using the same action dict on both sides
 
-            obs = self._permuted_obs(actions)
+            obs = self._permuted_obs(true_actions)
         else:
-            obs = self._obs(actions)
+            obs = self._obs(true_actions)
         
-        rewards, dones = self._step(actions)
+        rewards, dones = self._step(true_actions)
 
         return obs, rewards, dones, None

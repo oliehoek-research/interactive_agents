@@ -25,6 +25,7 @@ class QNet(nn.Module):
         last_size = input_size
         for size in hidden_sizes:
             layers.append(nn.Linear(last_size, size))
+            layers.append(nn.ReLU())
             last_size = size
 
         self._hidden = nn.Sequential(*layers)
@@ -39,7 +40,7 @@ class QNet(nn.Module):
 
         if self._deuling:
             V = self._value_function(output)
-            Q += V - Q.mean(1, keepdim=True)
+            Q += V - Q.mean(-1, keepdim=True)
 
         return Q
 
