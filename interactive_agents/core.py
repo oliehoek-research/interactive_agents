@@ -89,7 +89,7 @@ def run_experiment(path, name, config, pool):
 
     try:
         repo = Repo(search_parent_directories=True)
-        metadata["git_commit"] = repo.active_branch.commit
+        metadata["git_commit"] = str(repo.active_branch.commit)
     except:
         pass
 
