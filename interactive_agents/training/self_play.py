@@ -124,11 +124,9 @@ class SelfPlayTrainer:
         watch.restart()
 
         if self._total_iterations < self._burn_in_iterations:
-            print(f"\nburn-in - iteration {self._total_iterations}")
             batch, batch_stats = sample(self._env, self._training_policies,
                 self._iteration_episodes, self._max_steps)
         else:
-            print(f"\nself-play - round: {self._round}, iteration: {self._total_iterations}")
             batch, batch_stats = self._sample_checkpoints(self._round)
         
         watch.stop()
@@ -169,7 +167,6 @@ class SelfPlayTrainer:
 
         # Do checkpointing if necessary
         if self._total_iterations >= self._burn_in_iterations:
-            print(f"\nCHECKPOINT - round: {self._round}, iteration: {self._total_iterations}")
             round_iteration = self._total_iterations - self._burn_in_iterations
 
             if round_iteration % self._round_iterations == 0:

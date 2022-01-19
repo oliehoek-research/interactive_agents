@@ -3,6 +3,7 @@
 import argparse
 from collections import defaultdict
 import io
+import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import numpy as np
 import os
@@ -26,13 +27,63 @@ def parse_args():
     parser.add_argument("path", type=str, help="path to directory containing training results")
     parser.add_argument("-o", "--output-path", type=str, default=None,
                         help="directory in which we should save matrix (defaults to experiment directory)")
+    parser.add_argument("-f", "--filename", type=str, default="jpc",
+                        help="filename for saved matrix")
     parser.add_argument("-n", "--num-cpus", type=int, default=1,
                         help="the number of parallel worker processes to launch")
     parser.add_argument("-e", "--num-episodes", type=int, default=100,
                         help="the number of episodes to run for each policy combination")
     parser.add_argument("-m", "--map", nargs="+")
 
+    parser.add_argument("--title", type=str, default="Joint Policy Correlation",
+                        help="title for figure")
+    parser.add_argument("--min", type=float, help="min payoff value (for image rendering)")
+    parser.add_argument("--max", type=float, help="max payoff value (for image rendering)")
+
     return parser.parse_args()
+
+
+def plot_matrix(matrix, path, title, min, max, size=300):
+    if min is None:
+        min = matrix.min()
+
+    if max is None:
+        max = matrix.max()
+
+    # Scale range to cut off dark reds
+    max += 0.15 * (max - min)
+    cm = plt.get_cmap("jet")
+
+    # Ticks for each seed on the x and y axis
+    tick_space = size / matrix.shape[0]
+    tick_pos = 0.5 * tick_space
+    ticks = []
+    labels = []
+
+    for idx in range(matrix.shape[0]):
+        ticks.append(tick_pos)
+        labels.append(idx)
+        tick_pos += tick_space
+    
+    # Generate figure
+    plt.clf()
+    im = plt.imshow(matrix, 
+        cmap=cm,
+        vmin=min,
+        vmax=max,
+        extent=(0,size,0,size))
+    plt.colorbar(im)
+
+    plt.xticks(ticks, labels=labels)
+    plt.yticks(ticks, labels=labels)
+
+    ax = plt.gca()
+    ax.grid(which='minor', color='k', linestyle='-', linewidth=2)
+
+    plt.title(title, fontsize=14)
+    plt.xlabel("seeds", fontsize=16)
+    plt.ylabel("seeds", fontsize=16)
+    plt.savefig(path, bbox_inches="tight")
 
 
 def load_config(path, map):
@@ -211,6 +262,9 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
 if __name__ == '__main__':
     args = parse_args()
 
+    # Limit CPU paralellism
+    torch.set_num_threads(args.num_cpus)
+
     print(f"Loading policies from: {args.path}")
     populations, config = load_populations(args.path, args.map)
 
@@ -221,9 +275,21 @@ if __name__ == '__main__':
     print(jpc)
 
     if args.output_path is not None:
-        output_path = os.path.join(args.output_path, "jpc.npy")
+        matrix_path = os.path.join(args.output_path, args.filename + ".npy")
+        image_path = os.path.join(args.output_path, args.filename + ".png")
     else:
-        output_path = os.path.join(args.path, "jpc.npy")
+        matrix_path = os.path.join(args.path, args.filename + ".npy")
+        image_path = os.path.join(args.path, args.filename + ".png")
 
-    print(f"\nwriting JPC tensor to: {output_path}")
-    np.save(output_path, jpc, allow_pickle=False)
+    print(f"\nwriting JPC tensor to: {matrix_path}")
+    np.save(matrix_path, jpc, allow_pickle=False)
+
+    if len(jpc.shape) == 2:
+        print(f"\nrendering JPC tensor to: {matrix_path}")
+        plot_matrix(
+            jpc, 
+            image_path,
+            title=args.title,
+            min=args.min,
+            max=args.max)    
+

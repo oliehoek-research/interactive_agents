@@ -1,20 +1,28 @@
-r2d2_regret_game_coordination:
+r2d2_regret_game_otherplay_coordination:
   stop:
-    total_iterations: 600
+    total_iterations: 300
   trainer: regret_game
-  num_seeds: 8
+  num_seeds: 5
   config:
     round_iterations: 20
     burn_in_iterations: 20
-    weight_decay: 0.8
+    weight_decay: 0.9
     max_steps: 20
     alice_episodes: 100
     bob_episodes: 100
     env: coordination
     env_config:
       stages: 8
-      actions: 5
+      actions: 10
       players: 2
+      focal_point: True
+      other_play: True
+    env_eval_config:
+      stages: 8
+      actions: 10
+      players: 2
+      focal_point: True
+      other_play: False
     alice: R2D2
     alice_config:
       batch_size: 8
@@ -24,7 +32,7 @@ r2d2_regret_game_coordination:
       gamma: 0.99
       beta: 0.5
       lr: 0.01
-      hidden_size: 32
+      hidden_size: 64
       hidden_layers: 1
       dueling: True
       buffer_size: 1042
@@ -37,7 +45,7 @@ r2d2_regret_game_coordination:
       gamma: 0.99
       beta: 0.5
       lr: 0.01
-      hidden_size: 32
+      hidden_size: 64
       hidden_layers: 1
       hiddens: []
       dueling: True
@@ -51,7 +59,7 @@ r2d2_regret_game_coordination:
       gamma: 0.99
       beta: 0.5
       lr: 0.01
-      hidden_size: 32
+      hidden_size: 64
       hidden_layers: 1
       hidden: []
       dueling: True
