@@ -1,0 +1,30 @@
+r2d2_self_play_coordination:
+  config:
+    burn_in_iterations: 20
+    env: coordination
+    env_config:
+      actions: 10
+      players: 2
+      stages: 8
+    eval_episodes: 10
+    iteration_episodes: 100
+    learner: R2D2
+    learner_config:
+      batch_size: 8
+      batches_per_episode: 1.0
+      beta: 0.5
+      buffer_size: 1024
+      dueling: true
+      epsilon: 0.1
+      gamma: 0.99
+      hidden_layers: 1
+      hidden_size: 32
+      lr: 0.01
+      sync_interval: 100
+    max_steps: 20
+    round_iterations: 20
+    weight_decay: 0.8
+  num_seeds: 10
+  stop:
+    total_iterations: 300
+  trainer: self_play

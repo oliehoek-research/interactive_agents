@@ -1,6 +1,6 @@
 dqn_coordination:
   stop:
-    total_iterations: 300
+    total_iterations: 600
   trainer: independent
   num_seeds: 5
   config:
@@ -15,7 +15,7 @@ dqn_coordination:
     learner: DQN
     learner_config:
       batch_size: 8
-      batches_per_episode: 0.5
+      batches_per_episode: 1.0
       sync_interval: 100
       epsilon: 0.01
       gamma: 0.99

@@ -114,6 +114,10 @@ def run_experiment(path, name, config, pool):
 
 
 def run_experiments(experiments, path, num_cpus=1):
+
+    # Limit CPU paralellism
+    torch.set_num_threads(num_cpus)
+
     pool = Pool(num_cpus)
     trials = []
 

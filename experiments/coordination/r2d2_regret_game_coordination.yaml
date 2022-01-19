@@ -1,19 +1,22 @@
 r2d2_regret_game_coordination:
   stop:
-    total_iterations: 300
+    total_iterations: 600
   trainer: regret_game
-  num_seeds: 5
+  num_seeds: 8
   config:
+    round_iterations: 20
+    burn_in_iterations: 20
+    weight_decay: 0.8
     max_steps: 20
-    iteration_episodes: 200
-    eval_episodes: 10
+    alice_episodes: 100
+    bob_episodes: 100
     env: coordination
     env_config:
       stages: 8
       actions: 5
       players: 2
-    learner: R2D2
-    learner_config:
+    alice: R2D2
+    alice_config:
       batch_size: 8
       batches_per_episode: 1.0
       sync_interval: 100
@@ -21,24 +24,12 @@ r2d2_regret_game_coordination:
       gamma: 0.99
       beta: 0.5
       lr: 0.01
-      hidden_size: 64
+      hidden_size: 32
       hidden_layers: 1
       dueling: True
       buffer_size: 1042
-    partner: DQN
-    partner_config:
-      batch_size: 8
-      batches_per_episode: 1.0
-      sync_interval: 100
-      epsilon: 0.01
-      gamma: 0.99
-      beta: 0.5
-      lr: 0.01
-      hiddens: []
-      dueling: True
-      buffer_size: 1024
-    response: DQN
-    response_config:
+    bob: R2D2
+    bob_config:
       batch_size: 8
       batches_per_episode: 1.0
       sync_interval: 100
@@ -46,6 +37,22 @@ r2d2_regret_game_coordination:
       gamma: 0.99
       beta: 0.5
       lr: 0.01
+      hidden_size: 32
+      hidden_layers: 1
       hiddens: []
+      dueling: True
+      buffer_size: 1024
+    eve: R2D2
+    eve_config:
+      batch_size: 8
+      batches_per_episode: 1.0
+      sync_interval: 100
+      epsilon: 0.1
+      gamma: 0.99
+      beta: 0.5
+      lr: 0.01
+      hidden_size: 32
+      hidden_layers: 1
+      hidden: []
       dueling: True
       buffer_size: 1024
