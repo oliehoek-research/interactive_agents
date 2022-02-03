@@ -40,10 +40,12 @@ def parse_args():
     parser.add_argument("--min", type=float, help="min payoff value (for image rendering)")
     parser.add_argument("--max", type=float, help="max payoff value (for image rendering)")
 
+    parser.add_argument("-d", "--display", type=bool, default=False, help="display JPC matrix when ready")
+
     return parser.parse_args()
 
 
-def plot_matrix(matrix, path, title, min, max, size=300):
+def plot_matrix(matrix, path, title, min, max, size=300, disp=False):
     if min is None:
         min = matrix.min()
 
@@ -84,6 +86,9 @@ def plot_matrix(matrix, path, title, min, max, size=300):
     plt.xlabel("seeds", fontsize=16)
     plt.ylabel("seeds", fontsize=16)
     plt.savefig(path, bbox_inches="tight")
+
+    if disp:
+        plt.show(block=True)
 
 
 def load_config(path, map):
@@ -291,5 +296,6 @@ if __name__ == '__main__':
             image_path,
             title=args.title,
             min=args.min,
-            max=args.max)    
+            max=args.max,
+            disp=args.display)    
 
