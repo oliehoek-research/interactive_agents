@@ -1,3 +1,4 @@
+"""Tests ability to use ray actors synchronously"""
 import ray
 
 

@@ -1,52 +1,57 @@
 r2d2_regret_game_coordination:
   config:
-    env: coordination
-    env_config:
-      actions: 10
-      players: 2
-      stages: 10
-    eval_episodes: 10
-    iteration_episodes: 100
-    learner: R2D2
-    learner_config:
-      batch_size: 4
-      batches_per_episode: 0.25
+    alice: R2D2
+    alice_config:
+      batch_size: 8
+      batches_per_episode: 1.0
       beta: 0.5
-      buffer_size: 2048
+      buffer_size: 1042
       dueling: true
-      epsilon: 0.01
+      epsilon: 0.1
       gamma: 0.99
       hidden_layers: 1
       hidden_size: 32
-      lr: 0.001
+      lr: 0.01
+      sync_interval: 100
+    alice_episodes: 100
+    bob: R2D2
+    bob_config:
+      batch_size: 8
+      batches_per_episode: 1.0
+      beta: 0.5
+      buffer_size: 1024
+      dueling: true
+      epsilon: 0.1
+      gamma: 0.99
+      hidden_layers: 1
+      hidden_size: 32
+      hiddens: []
+      lr: 0.01
+      sync_interval: 100
+    bob_episodes: 100
+    burn_in_iterations: 20
+    env: coordination
+    env_config:
+      actions: 5
+      players: 2
+      stages: 8
+    eve: R2D2
+    eve_config:
+      batch_size: 8
+      batches_per_episode: 1.0
+      beta: 0.5
+      buffer_size: 1024
+      dueling: true
+      epsilon: 0.1
+      gamma: 0.99
+      hidden: []
+      hidden_layers: 1
+      hidden_size: 32
+      lr: 0.01
       sync_interval: 100
     max_steps: 20
-    partner: DQN
-    partner_config:
-      batch_size: 4
-      batches_per_episode: 0.25
-      beta: 0.5
-      buffer_size: 2048
-      dueling: true
-      epsilon: 0.01
-      gamma: 0.99
-      hiddens:
-      - 32
-      lr: 0.001
-      sync_interval: 100
-    response: DQN
-    response_config:
-      batch_size: 4
-      batches_per_episode: 0.25
-      beta: 0.5
-      buffer_size: 2048
-      dueling: true
-      epsilon: 0.01
-      gamma: 0.99
-      hiddens:
-      - 32
-      lr: 0.001
-      sync_interval: 100
+    round_iterations: 20
+    weight_decay: 0.8
   num_seeds: 10
   stop:
     total_iterations: 300

@@ -1,7 +1,4 @@
-'''
-Test self-play algorithms in repeated matrix games
-'''
-
+"""Test self-play algorithms in repeated matrix games"""
 from collections import defaultdict
 
 import gym
@@ -172,9 +169,6 @@ class R2D2:
             self._optimizer.step()
 
 
-# NOTE: How do we implement PPO in this framework? - use asynchronous PPO
-
-
 class IndependentTraining:
 
     def __init__(self, learners, config={}):
@@ -188,11 +182,6 @@ class IndependentTraining:
 
     def next(self):
         return self._policies, self._trainable
-
-
-# class DelayedTraining:
-
-
 
 
 class SelfPlay:
