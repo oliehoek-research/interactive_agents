@@ -25,83 +25,26 @@ def parse_args():
     parser = argparse.ArgumentParser("Computes the Joint Policy Correlation matrix for a set of trained policies")
 
     parser.add_argument("path", type=str, help="path to directory containing training results")
-    parser.add_argument("-o", "--output-path", type=str, default=None,
-                        help="directory in which we should save matrix (defaults to experiment directory)")
-    parser.add_argument("-f", "--filename", type=str, default="jpc",
-                        help="filename for saved matrix")
-    parser.add_argument("-n", "--num-cpus", type=int, default=1,
-                        help="the number of parallel worker processes to launch")
+    parser.add_argument("-s", "--seed", type=int, default=0,
+                        help="the random seed of the population we want to visualize")
     parser.add_argument("-e", "--num-episodes", type=int, default=100,
                         help="the number of episodes to run for each policy combination")
     parser.add_argument("-m", "--map", nargs="+")
 
-    parser.add_argument("--title", type=str, default="Joint Policy Correlation",
-                        help="title for figure")
-    parser.add_argument("--min", type=float, help="min payoff value (for image rendering)")
-    parser.add_argument("--max", type=float, help="max payoff value (for image rendering)")
-
-    parser.add_argument("-d", "--display", type=bool, default=False, help="display JPC matrix when ready")
-
     return parser.parse_args()
 
 
-def plot_matrix(matrix, path, title, min, max, size=300, disp=False):
-    if min is None:
-        min = matrix.min()
-
-    if max is None:
-        max = matrix.max()
-
-    # Scale range to cut off dark reds
-    max += 0.15 * (max - min)
-    cm = plt.get_cmap("jet")
-
-    # Ticks for each seed on the x and y axis
-    tick_space = size / matrix.shape[0]
-    tick_pos = 0.5 * tick_space
-    ticks = []
-    labels = []
-
-    for idx in range(matrix.shape[0]):
-        ticks.append(tick_pos)
-        labels.append(idx)
-        tick_pos += tick_space
-    
-    # Generate figure
-    plt.clf()
-    im = plt.imshow(matrix, 
-        cmap=cm,
-        vmin=min,
-        vmax=max,
-        extent=(0,size,0,size))
-    plt.colorbar(im)
-
-    plt.xticks(ticks, labels=labels)
-    plt.yticks(ticks, labels=labels)
-
-    ax = plt.gca()
-    ax.grid(which='minor', color='k', linestyle='-', linewidth=2)
-
-    plt.title(title, fontsize=14)
-    plt.xlabel("seeds", fontsize=16)
-    plt.ylabel("seeds", fontsize=16)
-    plt.savefig(path, bbox_inches="tight")
-
-    if disp:
-        plt.show(block=True)
-
-
-def load_populations(path, policy_map):
-    populations = defaultdict(dict)
+def load_population(path, seed, policy_map):
+    population = {}
     config_path = os.path.join(path, "config.yaml")
     
     if not os.path.isfile(config_path):
-        raise ValueError(f"Config File: '{config_path}' not defined")
+        raise FileNotFoundError(f"Config File: '{config_path}' not found")
 
     with open(config_path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    if "trainer" not in config:  # NOTE: When would this be needed?
+    if "trainer" not in config:  # NOTE: Needed because some configs are actually dictionaries of named configs, while others are unnamed
         config = list(config.values())[0]
 
     trainer_config = config.get("config", {})
@@ -112,7 +55,7 @@ def load_populations(path, policy_map):
         env_config = trainer_config.get("env_eval_config", env_config)
 
         env_cls = get_env_class(env_name)
-        env = env_cls(env_config, spec_only=True)
+        env = env_cls(env_config, spec_only=True)  # NOTE: Ideally need a better way to do this, a better environment interface
 
         map = {}
         for policy_id in env.observation_space.keys():
@@ -129,29 +72,28 @@ def load_populations(path, policy_map):
 
             map[agent_id] = policy_id
 
-    for seed in range(config.get("num_seeds", 1)):
-        sub_path = os.path.join(path, f"seed_{seed}/policies")
+    sub_path = os.path.join(path, f"seed_{seed}/policies")
 
-        if os.path.isdir(sub_path):
-            print(f"\nloading path: {sub_path}")
+    if os.path.isdir(sub_path):
+        print(f"\nloading path: {sub_path}")
 
-            for agent_id, policy_id in map.items():
-                policy_path = os.path.join(sub_path, f"{policy_id}.pt")
-                print(f"loading: {policy_path}")
+        for agent_id, policy_id in map.items():
+            policy_path = os.path.join(sub_path, f"{policy_id}.pt")
+            print(f"loading: {policy_path}")
 
-                if os.path.isfile(policy_path):
-                    model = torch.jit.load(policy_path)
-                    populations[seed][agent_id] = model
-                else:
-                    raise FileNotFoundError(f"seed '{seed}' does not define policy '{policy_id}'")
+            if os.path.isfile(policy_path):
+                model = torch.jit.load(policy_path)
+                population[agent_id] = model
+            else:
+                raise FileNotFoundError(f"seed '{seed}' does not define policy '{policy_id}'")
     
-    return populations, trainer_config
+    return population, trainer_config
 
 
 def evaluate(env_cls, env_config, models, num_episodes, max_steps):
 
     # Build environment instance
-    env = env_cls(env_config)
+    env = env_cls(env_config)  # NOTE: We were doing this for multi-threaded execution, do we need this anymore?
 
     # Instantiate policies
     policies = {}
@@ -166,21 +108,10 @@ def evaluate(env_cls, env_config, models, num_episodes, max_steps):
     return stats
 
 
-def permutations(num_agents, num_populations):
-        num_permutations = num_populations ** num_agents
-        for index in range(num_permutations):
-            permutation = [0] * num_agents
-            idx = index
-            for id in range(num_agents):
-                permutation[id] = idx % num_populations
-                idx = idx // num_populations
-            yield permutation
-
-
 def cross_evaluate(populations, config, num_cpus, num_episodes):
 
     # NOTE: Used as a handle for single-threaded execution
-    class dummy_async:
+    class dummy_async:  # NOTE, we don't really need this anymore, since visualization will be single threaded
 
         def __init__(self, result):
             self._result = result
@@ -239,11 +170,9 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
 if __name__ == '__main__':
     args = parse_args()
 
-    # Limit CPU paralellism
-    torch.set_num_threads(args.num_cpus)
 
-    print(f"Loading policies from: {args.path}")
-    populations, config = load_populations(args.path, args.map)
+    print(f"Loading policies from: {args.path}")  # TODO: Need to load two specific populations from two runs
+    population, config = load_population(args.path, args.seed, args.map)
 
     print(f"Evaluating Policies")
     jpc = cross_evaluate(populations, config, args.num_cpus, args.num_episodes)
