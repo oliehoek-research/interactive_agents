@@ -1,1 +1,1 @@
-# TODO: Allow module to be installed for access from external scripts
+# TODO: Allow module to be installed for access from external scripts - get dependencies - read more about setup.py
