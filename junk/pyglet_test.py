@@ -1,9 +1,8 @@
 # Test using pyglet within WSL - doing policy visualization with pyglet
 import pyglet
 
-if __name__ == "__main__":
-    # NOTE: There is a full game tutorial for pyglet, maybe go through that
 
+def main():
     config = pyglet.gl.Config(sample_buffers=1, samples=4)
     window = pyglet.window.Window(500, 500, config=config)
 
@@ -13,9 +12,22 @@ if __name__ == "__main__":
             ('c3B', (255, 0, 0, 0, 255, 0, 0, 0, 255))
         )
 
+    label = pyglet.text.Label(f"A Triangle",
+                              font_name="Arial",
+                              font_size=16,
+                              x=250, y=50,
+                              anchor_x="center", anchor_y="center",
+                              color=(255,255,255,255), bold=True)
+
     @window.event
     def on_draw():
         window.clear()
         shapes.draw()
 
-    pyglet.app.run()  # NOTE: How do we manually increment the game loop?
+        label.draw()
+
+    pyglet.app.run()
+
+
+if __name__ == "__main__":
+    main()

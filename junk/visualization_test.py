@@ -24,18 +24,6 @@ class CoordinationGame:
         self._current_stage = 0
         self._prev_actions = None
 
-        # Rendering config
-        self._cell_size = render_config.get("cell_size", 100)
-        max_width = render_config.get("max_width", 800)
-
-        if self._cell_size * self._num_stages > max_width:
-            self._cell_size = max_width // self._num_stages
-
-        self._window = None
-        self._window_closed = False
-
-        self._labels = None
-
     def _obs(self, actions=None):
         obs = {}
         for pid in range(self._num_players):
@@ -136,8 +124,61 @@ class CoordinationGame:
     def window_closed(self):
         return self._window_closed
 
-    def visualize(self):  # TODO: Will need to pass policy array, number of episodes, max steps, etc...
-        pass
+    def visualize(self, 
+                  policies={}, 
+                  max_episodes=None, 
+                  max_steps=None,
+                  step_interval=2.0,
+                  cell_size=200,
+                  max_width=1600):
+        
+        # NOTE: Pyglet seems a bit flaky, does it have anything to do with WSL?
+
+        # Enforce maximum window width
+        if cell_size * self._num_stages > max_width:
+            cell_size = max_width // self._num_stages
+
+        # Create window
+        width = cell_size * self._num_stages
+        height = cell_size
+        config = pyglet.gl.Config(sample_buffers=1, samples=4)  # Needed for anti-aliasing
+        window = pyglet.window.Window(width, height, 
+                    config=config, caption="Coordination Game")
+
+        # Initialize geometry
+
+        # Initialize text overlay
+        labels = []
+        x_pos = cell_size // 2
+        y_pos = cell_size // 10
+
+        for stage in range(self._num_stages):
+            labels.append(pyglet.text.Label(f"stage {stage + 1}",
+                          font_name="Arial",
+                          font_size=16,
+                          x=x_pos, y=y_pos,
+                          anchor_x="center", anchor_y="center",
+                          color=(255,255,255,255), bold=True))
+            x_pos += cell_size
+
+        # TODO: Schedule environment updates
+
+        # Add drawing function
+        @window.event
+        def on_draw():
+
+            # Clear window
+            window.clear()
+            
+            # Render geometry
+
+
+            # Draw text overlay
+            for label in labels:
+                label.draw()
+
+        # Launch game loop - returns when window is closed or max-episodes reached
+        pyglet.app.run()
 
 
 if __name__ == "__main__":
@@ -150,13 +191,14 @@ if __name__ == "__main__":
             "stages": 5,
             "actions": 8,
             "players": 2,
-        }, 
-        render_config={
-            "cell_size": 200,
-            "max_width": 1600,
         })
     
+
+    # Launch visualization
+    env.visualize()  # NOTE: Is it possible that there is some environment variable we are missing here?
+
     # Run episodes
+    '''
     sleep = 1.0 / FPS
 
     for episode in range(NUM_EPISODES):
@@ -181,3 +223,4 @@ if __name__ == "__main__":
                 exit()
             
             time.sleep(sleep)
+    '''

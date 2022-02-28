@@ -1,3 +1,11 @@
-# interactive_agents
+## Interactive Agents
 
-Reinforcement learning agents which adapt online via human interaction.
+Reinforcement learning for human-AI interaction.
+
+### Installation
+
+### Running Experiments
+
+### Parameter Tuning
+
+### Analysis
