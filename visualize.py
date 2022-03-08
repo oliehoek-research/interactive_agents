@@ -1,3 +1,5 @@
+# TODO: Modify this script to support environment visualization, and eventually rendering as well
+
 #!/usr/bin/env python3
 '''Computes the Joint Policy Correlation matrix for a set of trained policies'''
 import argparse
@@ -22,19 +24,22 @@ def print_error(error):
 
 
 def parse_args():
-    parser = argparse.ArgumentParser("Computes the Joint Policy Correlation matrix for a set of trained policies")
+    parser = argparse.ArgumentParser("Visualizes a set of trained policies")
 
     parser.add_argument("path", type=str, help="path to directory containing training results")
-    parser.add_argument("-s", "--seed", type=int, default=0,
-                        help="the random seed of the population we want to visualize")
     parser.add_argument("-e", "--num-episodes", type=int, default=100,
                         help="the number of episodes to run for each policy combination")
-    parser.add_argument("-m", "--map", nargs="+")
+    parser.add_argument("-m", "--map", nargs="+",
+                        help="the mapping from agents to policies")
+    parser.add_argument("-s", "--seeds", nargs="+",
+                        help="which random seeds each policy should be drawn from")
+
 
     return parser.parse_args()
 
 
-def load_population(path, seed, policy_map):
+def load_policies(path, policy_map, seeds):
+    # TODO: Give a path to a single batch, load the required policies, yielding a single policy dictionary (with different policies potentially drawn from different seeds)
     population = {}
     config_path = os.path.join(path, "config.yaml")
     
@@ -170,7 +175,7 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
 if __name__ == '__main__':
     args = parse_args()
 
-
+    # TODO: How do we specify the mapping we want to analyze?
     print(f"Loading policies from: {args.path}")  # TODO: Need to load two specific populations from two runs
     population, config = load_population(args.path, args.seed, args.map)
 
