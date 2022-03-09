@@ -1,6 +1,6 @@
 """Additional utilities for multi-agent environments"""
 import gym
-from gym.wrappers import RecordVideo
+from gym.wrappers import RecordVideo, TimeLimit
 import numpy as np
 import time
 
@@ -14,19 +14,23 @@ class VisualizeGym(gym.core.Wrapper):
                   policy_fn=None,
                   max_episodes=None, 
                   max_steps=None,
-                  step_interval=1.5,
-                  record=False,
+                  speed=50,
                   record_path=None,
                   headless=False,
                   **kwargs):
 
+        # NOTE: We will have multiple wrappers around the base environment (performance isn't an issue for visualization)
+        env = self.env
+
+        # Enforce step limit
+        if max_steps is not None:
+            env =TimeLimit(env, max_episode_steps=max_steps)
+
         # Enable video recording if requested
-        if record:
-            if record_path is None:
-                record_path = "./video"
-            env = RecordVideo(self.env, record_path)
-        else:
-            env = self.env
+        if record_path is not None:
+
+            # NOTE: Need to provide the episode_trigger to record every episode
+            env = RecordVideo(env, record_path, episode_trigger=lambda id: True)
 
         # Begin visualization
         if max_episodes is None:
@@ -34,6 +38,8 @@ class VisualizeGym(gym.core.Wrapper):
 
         if max_steps is None:
             max_steps = np.inf
+
+        step_interval = 1.0 / speed
 
         episodes = 0
         while episodes < max_episodes:
@@ -61,10 +67,7 @@ class VisualizeGym(gym.core.Wrapper):
             while step < max_steps and not all(dones.values()):
                 actions = {}
                 for agent_id, ob in obs.items():
-                    if agent_id in actions:
-                        actions[agent_id], _ = agents[agent_id].act(ob)  # NOTE: May return additional info
-                    else:
-                        actions[agent_id] = None  # NOTE: Need to check the multi-agent interface for the 
+                    actions[agent_id], _ = agents[agent_id].act(ob)  # NOTE: May return additional info
                 
                 obs, rewards, dones, info = env.step(actions)
                 step += 1

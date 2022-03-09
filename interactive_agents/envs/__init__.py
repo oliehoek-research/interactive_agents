@@ -1,3 +1,5 @@
+from interactive_agents.envs.utils import VisualizeGym
+
 
 def get_coordination_game():
     from interactive_agents.envs.coordination_game import CoordinationGame
@@ -31,6 +33,7 @@ ENVS = {
     "memory": get_memory_game,
     "repeated": get_repeated_game,
 }
+
 
 def get_env_class(name):
     if name not in ENVS:
