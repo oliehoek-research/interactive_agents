@@ -1,11 +1,11 @@
 import gym
 
-class GymEnv:
+class GymEnv(gym.Wrapper):
     '''Multi-agent wrapper for single-agent OpenAI Gym environments'''
 
     def __init__(self, config, spec_only=False):
-        assert "name" in config, "must specify name of Gym environment"
-        self.env = gym.make(config.get("name"))
+        assert "name" in config, "must specify name of gym environment"
+        super(GymEnv, self).__init__(gym.make(config.get("name")))
 
         self._agent_id = config.get("agent_id", 0)
 

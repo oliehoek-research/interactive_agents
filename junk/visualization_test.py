@@ -1,5 +1,4 @@
 """Test of Pyglet visualization for Coordination game"""
-from re import L
 from gym.spaces import Discrete, Box
 import numpy as np
 import pyglet

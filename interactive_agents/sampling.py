@@ -86,8 +86,8 @@ class FrozenPolicy:
                 obs = obs.unsqueeze(0)  # NOTE: Add time dimension (for RNNs)
 
                 action, self._state = self._model(obs, self._state)
-                action.squeeze(0)  # NOTE: Remove time dimension
-                action.squeeze(0)  # NOTE: Remove batch dimension
+                action = action.squeeze(0)  # NOTE: Remove time dimension
+                action = action.squeeze(0)  # NOTE: Remove batch dimension
                 
                 return action.numpy(), {}
 

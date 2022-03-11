@@ -2,7 +2,7 @@ dqn_cartpole:
   stop:
     total_iterations: 300
   trainer: independent
-  num_seeds: 5
+  num_seeds: 2
   config:
     max_steps: 200
     iteration_episodes: 100
