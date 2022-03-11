@@ -14,7 +14,7 @@ class VisualizeGym(gym.core.Wrapper):
                   policy_fn=None,
                   max_episodes=None, 
                   max_steps=None,
-                  speed=50,
+                  speed=1,
                   record_path=None,
                   headless=False,
                   **kwargs):
@@ -39,7 +39,7 @@ class VisualizeGym(gym.core.Wrapper):
         if max_steps is None:
             max_steps = np.inf
 
-        step_interval = 1.0 / speed
+        step_interval = 50.0 / speed
 
         episodes = 0
         while episodes < max_episodes:
