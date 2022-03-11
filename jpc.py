@@ -40,7 +40,7 @@ def parse_args():
     parser.add_argument("--min", type=float, help="min payoff value (for image rendering)")
     parser.add_argument("--max", type=float, help="max payoff value (for image rendering)")
 
-    parser.add_argument("-d", "--display", type=bool, default=False, help="display JPC matrix when ready")
+    parser.add_argument("-d", "--display", action="store_true", help="display JPC matrix when ready")
 
     return parser.parse_args()
 
