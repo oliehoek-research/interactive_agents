@@ -28,7 +28,7 @@ def parse_args():
                         help="the path to save recorded videos (no recording if not provided)")
     parser.add_argument("--headless", action="store_true",
                         help="do not display visualization (record only in headless environments)")
-    parser.add_argument("--speed", type=float, default=50,
+    parser.add_argument("--speed", type=float, default=1,
                         help="the speed at which to play the visualization (in steps per second)")
 
     return parser.parse_args()
