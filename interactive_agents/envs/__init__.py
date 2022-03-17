@@ -26,12 +26,18 @@ def get_repeated_game():
     return RepeatedGame
 
 
+def get_pettingzoo_mpe():
+    from interactive_agents.envs.pettingzoo_mpe import PettingZooMPE
+    return PettingZooMPE
+
+
 ENVS = {
     "coordination": get_coordination_game,
     "linguistic": get_linguistic_game,
     "gym": get_gym_env,
     "memory": get_memory_game,
     "repeated": get_repeated_game,
+    "mpe": get_pettingzoo_mpe,
 }
 
 
