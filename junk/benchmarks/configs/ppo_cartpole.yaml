@@ -1,0 +1,35 @@
+PPO_CartPole:
+  run: PPO
+  env: CartPole-v1
+  stop:
+    timesteps_total: 200000
+  checkpoint_freq: 20
+  num_samples: 8
+  config:
+    gamma: 0.99
+    lambda: 0.95  # GAE lambda parameter
+    entropy_coeff: 0.001
+    clip_param: 0.1  # PPO clipping parameter
+    lr: 0.001
+    num_sgd_iter: 4
+    # DEFAULTS
+    use_critic: True
+    use_gae: True
+    kl_coeff: 0.2
+    rollout_fragment_length: 200  # Size of batch collected from EACH worker.
+    train_batch_size: 4000
+    sgd_minibatch_size: 128
+    shuffle_sequences: True
+    vf_loss_coeff: 1.0
+    vf_clip_param: 10.0  # May need to increase the range of the value function
+    grad_clip: null  # NOTE: Seems to cause a bug - can't pass None through YAML
+    kl_target: 0.01
+    batch_mode: truncate_episodes  # Sample either "complete_episodes" or "truncate_episodes"
+    observation_filter: NoFilter
+    # MODEL (Default values)
+    model:
+      fcnet_hiddens: [256, 256]
+      fcnet_activation: tanh
+      conv_filters: null  # Convolutions only activated for observations of rank > 1
+      conv_activation: relu
+      vf_share_layers: False  # Specific to actor-critic methods (if True, important to tune vf_loss_coeff)
