@@ -12,25 +12,27 @@ from ray.tune import run_experiments
 
 
 def parse_args():
-    parser = argparse.ArgumentParser("Generic training script for any registered single agent environment, logs intrinsic reward stats.")
+    parser = argparse.ArgumentParser("Generic training script for any registered single agent environment.")
 
     parser.add_argument("-f", "--config-file", default=None, type=str, action="append",
                         help="If specified, use config options from these files.")
     parser.add_argument("--local-dir", type=str, default="../../results/debug",
                         help="path to save training results")
-    parser.add_argument("--num-cpus", type=float, default=4,
+    parser.add_argument("--num-cpus", type=int, default=4,
                         help="the maximum number of CPUs ray is allowed to us, useful for running locally")
     parser.add_argument("--num-gpus", type=float, default=0,
                         help="the number of GPUs to allocate for each trainer")
-    parser.add_argument("--total-gpus", type=float, default=0,
+    parser.add_argument("--total-gpus", type=int, default=0,
                         help="the maximum number of GPUs ray is allowed to use")
-    parser.add_argument("--num-workers", type=int, default=0,
+    parser.add_argument("--num-workers", type=int,
                         help="the number of parallel workers per experiment")
     
     return parser.parse_args()
 
 
-def main(args):
+if __name__ == '__main__':
+    args = parse_args()
+
     if args.config_file:
         EXPERIMENTS = dict()
 
@@ -56,6 +58,7 @@ def main(args):
                     "clip_param": 0.1,
                     "lr": 0.001,
                     "num_sgd_iter": 4,
+                    "num_workers": 0,
                 },
             },
         }
@@ -64,9 +67,6 @@ def main(args):
 
         # Set local directory for checkpoints
         experiment["local_dir"] = str(args.local_dir)
-
-        # Set num workers
-        experiment["config"]["num_workers"] = args.num_workers
 
         # Set num GPUs per trainer
         experiment["config"]["num_gpus"] = args.num_gpus
@@ -82,9 +82,10 @@ def main(args):
             "inter_op_parallelism_threads": 1,
         }
 
-    ray.init(num_cpus=args.num_cpus, num_gpus=args.total_gpus)
-    run_experiments(EXPERIMENTS, verbose=0)
+        # Override num workers if specified
+        if args.num_workers is not None:
+            experiment["config"]["num_workers"] = args.num_workers
 
-if __name__ == '__main__':
-    args = parse_args()
-    main(args)
+    ray.init(num_cpus=args.num_cpus, num_gpus=args.total_gpus)
+
+    run_experiments(EXPERIMENTS, verbose=0)
