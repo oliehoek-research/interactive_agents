@@ -113,7 +113,7 @@ def run_experiment(path, name, config, pool):
     return trials
 
 
-def run_experiments(experiments, path, num_cpus=1):
+def run_experiments(experiments, path, num_cpus=1):  # NOTE: Right now we don't even support GPU training explicitly - codebase is a mess
 
     # Limit CPU paralellism
     torch.set_num_threads(num_cpus)
