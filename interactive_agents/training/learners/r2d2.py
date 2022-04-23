@@ -9,7 +9,7 @@ from torch.optim import Adam
 
 from interactive_agents.sampling import MultiBatch
 
-
+# TODO: Implement a full model-construction pipeline to allow for CNN and other enhancements
 class LSTMNet(nn.Module):
     """LSTM-based Q-Network with optional deuling architecture"""
     
@@ -59,6 +59,7 @@ class LSTMNet(nn.Module):
         return hidden, cell
 
 
+# NOTE: Why do we have two classes for this?
 class LSTMPolicy(nn.Module):
     """Torchscript policy wrapper for LSTM-based Q networks"""
 
@@ -77,6 +78,7 @@ class LSTMPolicy(nn.Module):
         return self._model.initial_state(batch_size=batch_size)
 
 
+# TODO: Need to implement prioritized experience replay
 class ReplayBuffer:
     """Replay buffer which samples batches of episode rather than steps"""
 
@@ -111,6 +113,7 @@ class ReplayBuffer:
         return obs_batch, action_batch, reward_batch, done_batch
 
 
+# NOTE: Wrapper class which encapsulates an individual instance of an R2D2 policy, capturing its internal state - seems redundant
 class R2D2Agent:
 
     def __init__(self, policy, state):
@@ -122,6 +125,7 @@ class R2D2Agent:
         return action, {}
 
 
+# NOTE: Portable wrapper for a policy being trained by R2D2 - allows us to distribute policies across multiple sampling processes
 class R2D2Policy:
 
     def __init__(self, 
@@ -130,7 +134,7 @@ class R2D2Policy:
             hidden_size=64, 
             hidden_layers=1, 
             dueling=True, 
-            epsilon=0):
+            epsilon=0):  # NOTE: Do we really need to repeat all these parameters here?
         self._action_space = action_space
         self._epsilon = epsilon
         self._q_network = LSTMNet(observation_space, 
@@ -152,9 +156,11 @@ class R2D2Policy:
         self._q_network.load_state_dict(state)
 
 
+# NOTE: Main agent class, defines the learning algorithm itself
 class R2D2:
 
     def __init__(self, observation_space, action_space, config):
+        # NOTE: There should be a single location for configuration defaults
         self._observation_space = observation_space
         self._action_space = action_space
         self._batch_size = config.get("batch_size", 4)
