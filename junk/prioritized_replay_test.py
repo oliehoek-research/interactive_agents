@@ -77,12 +77,13 @@ class LSTMNet(nn.Module):
 
     @torch.jit.export
     def get_h0(self, batch_size: int=1, device: str="cpu"):
+        # NOTE: May be a problem with the order of the initial state
         shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
 
         hidden = torch.zeros(shape, dtype=torch.float32)
         cell = torch.zeros(shape, dtype=torch.float32)
         
-        return hidden.to(self._device), cell.to(self._device)
+        return hidden.to(device), cell.to(device)
 
 
 class PriorityTree:
@@ -184,12 +185,12 @@ class ReplayBuffer:
         
         if self._priorities is not None:
             priorities = np.asarray(priorities, dtype=np.float32)
-            self._priorities.set(indices, priorities ** self._alpha)
+            self._priorities.set(indices, priorities)
 
     def update_priorities(self, indices, priorities):
         if self._priorities is not None:
             priorities = np.asarray(priorities, dtype=np.float32)
-            self._priorities.set(indices, priorities ** self._alpha)
+            self._priorities.set(indices, priorities)
     
     def _sample_priority(self, batch_size, beta):
         masses = np.random.random(batch_size) * self._priorities.sum()
@@ -212,13 +213,13 @@ class ReplayBuffer:
 
         batch = defaultdict(list)
         for idx in indices:
-            for key, value in self._samples[idx]:
+            for key, value in self._samples[idx].items():
                 batch[key].append(value)
 
         seq_lens = [len(reward) for reward in batch[REWARD]]
 
         for key in batch.keys():
-            batch[key] = nn.utils.rnn.pad_sequence(batch[key], batch_first=True)
+            batch[key] = nn.utils.rnn.pad_sequence(batch[key])
 
         return batch, weights, seq_lens, indices
 
@@ -228,12 +229,12 @@ class R2D2:
     def __init__(self, env, config={}, device='cpu'):
         self._env = env
         self._eval_iterations = config.get("eval_iterations", 10)
-        self._eval_episodes = config.get("eval_episodes", 16)
-        self._iteration_episodes = config.get("iteration_episodes", 16)
-        self._num_batches = config.get("num_batches", 4)
-        self._batch_size = config.get("batch_size", 4)  # NOTE: Need to look at R2D2 configs from stable-baselines, RLLib
+        self._eval_episodes = config.get("eval_episodes", 32)
+        self._iteration_episodes = config.get("iteration_episodes", 128)
+        self._num_batches = config.get("num_batches", 16)
+        self._batch_size = config.get("batch_size", 16)  # NOTE: Need to look at R2D2 configs from stable-baselines, RLLib
         self._sync_iterations = config.get("sync_iterations", 1)
-        self._learning_starts = config.get("learning_starts", 100)
+        self._learning_starts = config.get("learning_starts", 20)
         self._gamma = config.get("gamma", 0.99)
         self._beta = config.get("beta", 0.5)
         self._double_q = config.get("double_q", True)
@@ -248,10 +249,10 @@ class R2D2:
         # Replay buffer
         self._replay_alpha = config.get("replay_alpha", 0.6)
         self._replay_epsilon = config.get("replay_epsilon", 0.01)
-        self._replay_eta = config.get("replay_eta", 0.0)
+        self._replay_eta = config.get("replay_eta", 0.9)
         self._replay_beta = 0.0
         self._replay_beta_step = 1.0 / config.get("replay_beta_iterations", 1000)
-        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048), 0.0 != self._replay_alpha)
+        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 16000), 0.0 != self._replay_alpha)
 
         # Q-Networks
         dueling = config.get("dueling", True)
@@ -286,12 +287,12 @@ class R2D2:
     def _q_values(self, obs, state):
         obs = torch.as_tensor(obs, dtype=torch.float32, device=device)
         q_values, state = self._online_network(obs.reshape([1,1,-1]), state)
-        return q_values.reshape([-1]).numpy(), state
+        return q_values.detach().reshape([-1]).numpy(), state
     
     def _priority(self, td_errors):
-        abs_td = td_errors.abs()
-        max_error = abs_td.max(dim=-1)
-        mean_error = abs_td.mean(dim=-1)
+        abs_td = np.abs(td_errors)
+        max_error = abs_td.max(axis=0)
+        mean_error = abs_td.mean(axis=0)
 
         priority = self._replay_eta * max_error + (1 - self._replay_eta) * mean_error
         return (priority + self._replay_epsilon) ** self._replay_alpha
@@ -300,7 +301,9 @@ class R2D2:
         h0 = self._initial_state(len(weights))
 
         mask = [torch.ones(l) for l in seq_lens]
-        mask = nn.utils.rnn.pad_sequence(mask, batch_first=True)
+        mask = nn.utils.rnn.pad_sequence(mask)
+
+        weights = torch.as_tensor(weights, dtype=torch.float32)
 
         online_q, _ = self._online_network(batch[OBS], h0)
         target_q, _ = self._target_network(batch[NEXT_OBS], h0)
@@ -317,10 +320,10 @@ class R2D2:
         q_targets = q_targets.detach()
 
         errors = nn.functional.smooth_l1_loss(online_q, q_targets, beta=self._beta, reduction='none')
-        loss = torch.mean(weights * torch.mean(mask * errors, -1))
+        loss = torch.mean(weights * torch.mean(mask * errors, 0))
 
-        td_errors = online_q.detach() - q_targets
-        return loss, td_errors
+        td_errors = online_q - q_targets
+        return loss, td_errors.detach()
 
     def _rollout(self, num_episodes, explore=True, fetch_q=True):
         episodes = []
@@ -334,11 +337,17 @@ class R2D2:
             obs = self._env.reset()
             done = False
 
-            episode = defaultdict(list)
-            episode[OBS].append(obs)
+            obs_t = [obs]
+            action_t = []
+            reward_t = []
+            done_t = []
+
+            if fetch_q:
+                q_values_t = []
+                action_q_t = []
 
             while not done:
-                q_values = self._q_values(obs, state)
+                q_values, state = self._q_values(obs, state)
 
                 if explore and np.random.random() <= self._epsilon:
                     action = self._env.action_space.sample()
@@ -347,28 +356,33 @@ class R2D2:
                 
                 obs, reward, done, _ = self._env.step(action)
 
-                episode[OBS].append(obs)
-                episode[ACTION].append(action)
-                episode[REWARD].append(reward)
-                episode[DONE].append(done)
+                obs_t.append(obs)
+                action_t.append(action)
+                reward_t.append(reward)
+                done_t.append(done)
 
                 if fetch_q:
-                    episode["q_values"].append(q_values)
-                    episode["action_q"].append(q_values[action])
+                    q_values_t.append(q_values)
+                    action_q_t.append(q_values[action])
 
                 timesteps += 1
 
-            for key in episode.keys():
-                episode[key] = np.stack(episode[key])
-            
-            episode[NEXT_OBS] = episodes[OBS][1:]
-            episode[OBS] = episodes[OBS][:-1]
+            episode = {}
+            episode[ACTION] = np.asarray(action_t, dtype=np.int64)
+            episode[REWARD] = np.asarray(reward_t, dtype=np.float32)
+            episode[DONE] = np.asarray(done_t, np.float32)
 
-            episodes[ACTION] = np.eye(self._env.action_space.n)[episodes[ACTION]]
+            obs_t = np.stack(obs_t).astype(np.float32)
+            episode[OBS] = obs_t[:-1]
+            episode[NEXT_OBS] = obs_t[1:]
+            
+            if fetch_q:
+                episode["q_values"] = np.stack(q_values_t)
+                episode["action_q"] = np.asarray(action_q_t, dtype=np.float32)
 
             episodes.append(episode)
 
-            total_reward = sum(episode[REWARD])
+            total_reward = episode[REWARD].sum()
             r_mean += total_reward
             r_max = max(r_max, total_reward)
             r_min = min(r_min, total_reward)
@@ -376,16 +390,17 @@ class R2D2:
         return episodes, {
             "reward_mean": r_mean / num_episodes,
             "reward_max": r_max,
-            "reward_mean": r_min,
+            "reward_min": r_min,
             "episodes": num_episodes,
             "timesteps": timesteps,
         }
 
     def train(self):
         self._global_timer.start()
+        stats = {}
 
         # Sync online and target networks at fixed intervals
-        if self._iterations % self._sync_interval == 0:
+        if self._current_iteration % self._sync_iterations == 0:
             parameters = self._online_network.state_dict()
             self._target_network.load_state_dict(parameters)
 
@@ -412,17 +427,24 @@ class R2D2:
         self._replay_buffer.add(samples, priorities)
         self._sampling_timer.stop()
 
+        for key, value in sample_stats.items():
+            stats["sampling/" + key] = value
+
         # Do training updates
-        self._learning_timer.start()
-        for _ in range(self._num_batches):
-            batch, weights, seq_lengths, indices = self._replay_buffer.sample(self._batch_size)
-            self._optimizer.zero_grad()
-            loss, td_errors = self._loss(batch, weights, seq_lengths)
-            loss.backward()
-            self._optimizer.step()
-            ReplayBuffer.update_priorities(self._priority(td_errors))
-        
-        self._learning_timer.stop()
+        if self._current_iteration <= self._learning_starts:
+            self._learning_timer.start()
+            for _ in range(self._num_batches):
+                batch, weights, seq_lengths, indices = \
+                    self._replay_buffer.sample(self._batch_size, self._beta)
+                self._optimizer.zero_grad()
+                loss, td_errors = self._loss(batch, weights, seq_lengths)
+                loss.backward()
+                self._optimizer.step()
+
+                priorities = self._priority(td_errors.numpy())
+                self._replay_buffer.update_priorities(indices, priorities)
+            
+            self._learning_timer.stop()
 
         # Update exploration rate
         if self._current_iteration < self._epsilon_iterations:
@@ -438,15 +460,11 @@ class R2D2:
         if self._current_iteration % self._eval_iterations == 0:
             _, eval_stats = self._rollout(self._eval_episodes, explore=False, fetch_q=False)
 
+            for key, value in eval_stats.items():
+                stats["eval/" + key] = value
+
         # Return statistics
         self._global_timer.stop()
-        stats = {}
-
-        for key, value in sample_stats.items():
-            stats["sampling/" + key] = value
-
-        for key, value in eval_stats.items():
-            stats["eval/" + key] = value
 
         self._episodes_total += sample_stats["episodes"]
         self._timesteps_total += sample_stats["timesteps"]
@@ -521,12 +539,17 @@ if __name__ == "__main__":
 
     # Get torch device
     device = "cuda" if args.gpu else "cpu"
-    print("\nTraining R2D2 on device '{device}'")
+    print(f"\nTraining R2D2 on device '{device}'")
 
     # Load experiment config
     if args.config_file is None:  # Use default config
         print("using default config")
-        config = {}
+        config = {
+            "env": {
+                "length": 5,  # NOTE: Seems to be running episodes for one step longer?
+                "num_cues": 4,
+            },
+        }
     else:
         print(f"using config file: {args.config_file}")
         with open(args.config_file) as f:
@@ -557,7 +580,7 @@ if __name__ == "__main__":
                 writer.add_scalar(key, value, iteration)
             
             if "eval/reward_mean" in stats:
-                print(f"\nIteration {iteration}")
+                print(f"\nIteration {iteration + 1}")
                 print(f"mean eval reward: {stats['eval/reward_mean']}")
                 print(f"episodes: {stats['episodes_total']}")
                 print(f"time: {stats['global_time_s']}s")
