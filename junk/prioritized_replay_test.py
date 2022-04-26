@@ -1,14 +1,20 @@
-# A simplified implementation of the R2D2 architecture, implementing prioretized experience replay
+"""
+A simple, self-contained implementation of the R2D2 algorithm, including prioritized experience replay.
+"""
+import argparse
 from collections import defaultdict
 import gym
 from gym.spaces import Discrete, Box
 import numpy as np
+import os
+import os.path
+from tensorboardX import SummaryWriter
 import time
 import torch
 import torch.nn as nn
 from torch.optim import Adam
 from typing import Optional, Tuple
-
+import yaml
 
 class Stopwatch:
 
@@ -20,22 +26,26 @@ class Stopwatch:
         if self._started is None:
             self._started = time.time()
 
-    def restart(self):
-        self._elapsed = 0
-        self._started = time.time()
-
     def stop(self):
         stopped = time.time()
         if self._started is not None:
             self._elapsed += stopped - self._started
             self._started = None
 
-    def reset(self):
-        self._elapsed = 0
-        self._started = None
-
     def elapsed(self):
         return self._elapsed
+
+
+def make_unique_dir(path):
+    sub_path = os.path.join(path, str(0))
+    idx = 0
+
+    while os.path.exists(sub_path):
+        idx += 1
+        sub_path = os.path.join(path, str(idx))
+    
+    os.makedirs(sub_path)
+    return sub_path
 
 
 class LSTMNet(nn.Module):
@@ -66,13 +76,13 @@ class LSTMNet(nn.Module):
         return Q, hidden
 
     @torch.jit.export
-    def get_h0(self, batch_size: int=1):
+    def get_h0(self, batch_size: int=1, device: str="cpu"):
         shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
 
         hidden = torch.zeros(shape, dtype=torch.float32)
         cell = torch.zeros(shape, dtype=torch.float32)
         
-        return hidden, cell
+        return hidden.to(self._device), cell.to(self._device)
 
 
 class PriorityTree:
@@ -85,7 +95,7 @@ class PriorityTree:
             self._capacity *= 2
             self._depth += 1
 
-        size = self._capacity * 2 - 1
+        size = self._capacity * 2
         self._sums = np.full(size, 0.0)
         self._mins = np.full(size, np.inf)
 
@@ -94,7 +104,7 @@ class PriorityTree:
     def set(self, indices, priorities):
         priorities = np.asarray(priorities)
         indices = np.asarray(indices, dtype=np.int64)
-        indices += self._capacity - 1
+        indices += self._capacity
 
         self._sums[indices] = priorities
         self._mins[indices] = priorities
@@ -108,16 +118,16 @@ class PriorityTree:
 
     def get(self, indices):
         indices = np.asarray(indices, dtype=np.int64)
-        return self._sums[indices + self._capacity - 1]
+        return self._sums[indices + self._capacity]
 
     def min(self):
-        return self._mins[0]
+        return self._mins[1]
 
     def sum(self):
-        return self._sums[0]
+        return self._sums[1]
 
     def prefix_index(self, prefix):
-        idx = 0
+        idx = 1
         for _ in range(self._depth):
             next_idx = idx * 2
             if prefix < self._sums[next_idx]:
@@ -126,15 +136,15 @@ class PriorityTree:
                 prefix -= self._sums[next_idx]
                 idx = next_idx + 1
         
-        return idx - self._capacity + 1
+        return idx - self._capacity
 
 
-def test_priority_tree():
+def test_priority_tree():  # TODO: Need more tests, this is an easy class to screw up
     tree = PriorityTree(7)
-    tree.update([1, 2, 5], [1, 3, 2])
-    assert tree.min() == 1
-    assert tree.sum() == 6
-    assert tree.prefix_index(5) == 5
+    tree.set([1, 2, 5], [1, 3, 2])
+    assert tree.min() == 1, f"tree minimum {tree.min()}"
+    assert tree.sum() == 6, f"tree minimum {tree.sum()}"
+    assert tree.prefix_index(5) == 5, f"prefix index for sum 5 is {tree.prefix_index(5)}"
 
 
 OBS = "obs"
@@ -146,28 +156,35 @@ DONE = "done"
 
 class ReplayBuffer:
     
-    def __init__(self, capacity=128, alpha=0.0):
+    def __init__(self, capacity, prioritize=True, device="cpu"):
         self._capacity = capacity
-        self._alpha = alpha
+        self._device = device
 
         self._next_index = 0
         self._samples = []
 
-        if 0.0 == alpha:
-            self._priorities = None
-        else:
+        if prioritize:
             self._priorities = PriorityTree(capacity)
-
-    def add(self, sample, priority):
-        if len(self._samples) < self._capacity:
-            self._samples.append(sample)
         else:
-            self._samples[self._next_index] = sample
+            self._priorities = None
+
+    def add(self, samples, priorities):
+        indices = []
+        for sample in samples:
+            for key in sample:
+                sample[key] = torch.as_tensor(sample[key], device=self._device)
+
+            if len(self._samples) < self._capacity:
+                self._samples.append(sample)
+            else:
+                self._samples[self._next_index] = sample
+            
+            indices.append(self._next_index)
+            self._next_index = (self._next_index + 1) % self._capacity
         
         if self._priorities is not None:
-            self._priorities.set(self._next_index, priority ** self._alpha)
-        
-        self._next_index = (self._next_index + 1) % self._capacity
+            priorities = np.asarray(priorities, dtype=np.float32)
+            self._priorities.set(indices, priorities ** self._alpha)
 
     def update_priorities(self, indices, priorities):
         if self._priorities is not None:
@@ -193,211 +210,271 @@ class ReplayBuffer:
         else:
             indices, weights = self._sample_priority(batch_size, beta)
 
-        batch = {}
-        for key in self._samples[0].keys():
-            tensors = []
-            for idx in indices:
-                tensors.append(self._samples[idx][key])
-            
-            batch[key] = np.stack(tensors)
-        
-        return batch, weights
-    
-    # TODO: Move this logic to the R2D2 agent itself
-    def add(self, obs, actions, rewards, dones):
-        obs = torch.tensor(obs, dtype=torch.float32, device=self._device)  # NOTE: No need to pre-tensorize as far as I can tell
-        actions = torch.tensor(actions, dtype=torch.int64, device=self._device)
-        actions = nn.functional.one_hot(actions, self._action_space.n)  # NOTE: should probably do one-hot encoding outside the buffer
-        rewards = torch.tensor(rewards, dtype=torch.float32, device=self._device)
-        dones = torch.tensor(dones, dtype=torch.float32, device=self._device)
+        batch = defaultdict(list)
+        for idx in indices:
+            for key, value in self._samples[idx]:
+                batch[key].append(value)
 
-        if len(obs) < self._capacity:
-            self._obs.append(obs)
-            self._actions.append(actions)
-            self._rewards.append(rewards)
-            self._dones.append(dones)
-        else:
-            self._obs[self._index] = obs
-            self._actions[self._index] = actions
-            self._rewards[self._index] = rewards
-            self._dones[self._index] = dones
+        seq_lens = [len(reward) for reward in batch[REWARD]]
 
-        self._index = (self._index + 1) % self._capacity
-    
-    def sample(self, batch_size):
-        indices = np.random.randint(len(self._actions), size=batch_size)
-        
-        obs_batch = [self._obs[idx][:-1] for idx in indices]
-        next_obs_batch = [self._obs[idx][1:] for idx in indices]
-        
-        action_batch = [self._actions[idx] for idx in indices]
-        reward_batch = [self._rewards[idx] for idx in indices]
-        done_batch = [self._dones[idx] for idx in indices]
-        mask = [torch.ones_like(self._dones[idx]) for idx in indices]
+        for key in batch.keys():
+            batch[key] = nn.utils.rnn.pad_sequence(batch[key], batch_first=True)
 
-        obs_batch = nn.utils.rnn.pad_sequence(obs_batch)
-        next_obs_batch = nn.utils.rnn.pad_sequence(next_obs_batch)
-        action_batch = nn.utils.rnn.pad_sequence(action_batch)
-        reward_batch = nn.utils.rnn.pad_sequence(reward_batch)
-        done_batch = nn.utils.rnn.pad_sequence(done_batch)
-        mask = nn.utils.rnn.pad_sequence(mask)
-
-        return obs_batch, next_obs_batch, action_batch, reward_batch, done_batch, mask
-
-
-class Policy:  # NOTE: What do we use this for?
-
-    def __init__(self, model):
-        self._model = model
-        self._state = None
-
-    def reset(self, batch_size=1):
-        self._state = self._model.get_h0(batch_size)
-
-    def act(self, obs, explore=False):
-        q_values, self._state = self._model(obs.reshape([1,1,-1]), self._state)
-
-        return q_values.reshape([-1]).argmax()
+        return batch, weights, seq_lens, indices
 
 
 class R2D2:
 
-    def __init__(self, 
-                env, 
-                num_episodes=8, 
-                buffer_size=2048,
-                batch_size=4,
-                num_batches=4,
-                sync_interval=4,
-                epsilon=0.05,
-                gamma=0.99,
-                beta=0.5,
-                lr=0.01,
-                hidden_size=64,
-                hidden_layers=1,
-                deuling=True,
-                device='cpu'):
+    def __init__(self, env, config={}, device='cpu'):
         self._env = env
-        self._num_episodes = num_episodes
-        self._batch_size = batch_size
-        self._num_batches = num_batches
-        self._sync_interval = sync_interval
-        self._epsilon = epsilon
-        self._gamma = gamma
-        self._beta = beta
+        self._eval_iterations = config.get("eval_iterations", 10)
+        self._eval_episodes = config.get("eval_episodes", 16)
+        self._iteration_episodes = config.get("iteration_episodes", 16)
+        self._num_batches = config.get("num_batches", 4)
+        self._batch_size = config.get("batch_size", 4)  # NOTE: Need to look at R2D2 configs from stable-baselines, RLLib
+        self._sync_iterations = config.get("sync_iterations", 1)
+        self._learning_starts = config.get("learning_starts", 100)
+        self._gamma = config.get("gamma", 0.99)
+        self._beta = config.get("beta", 0.5)
+        self._double_q = config.get("double_q", True)
         self._device = device
 
-        self._replay_buffer = ReplayBuffer(env.action_space, buffer_size, device)
+        # Epsilon-greedy exploration
+        self._epsilon = config.get("epsilon_initial", 0.1)
+        self._epsilon_iterations = config.get("epsilon_iterations", 1000)
+        self._epsilon_decay = self._epsilon - config.get("epsilon_final", 0.01)
+        self._epsilon_decay /= self._epsilon_iterations
 
-        self._online_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, deuling)
-        self._target_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, deuling)
+        # Replay buffer
+        self._replay_alpha = config.get("replay_alpha", 0.6)
+        self._replay_epsilon = config.get("replay_epsilon", 0.01)
+        self._replay_eta = config.get("replay_eta", 0.0)
+        self._replay_beta = 0.0
+        self._replay_beta_step = 1.0 / config.get("replay_beta_iterations", 1000)
+        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048), 0.0 != self._replay_alpha)
+
+        # Q-Networks
+        dueling = config.get("dueling", True)
+        hidden_size = config.get("hidden_size", 64)
+        hidden_layers = config.get("hidden_layers", 1)
+
+        self._online_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
+        self._target_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
         
         self._online_network = torch.jit.script(self._online_network)
         self._target_network = torch.jit.script(self._target_network)
 
-        # Optional: move models to GPU
         self._online_network.to(device)
         self._target_network.to(device)
+
+        # Optimizer
+        self._optimizer = Adam(self._online_network.parameters(), lr=config.get("lr", 0.01))
+
+        # Statistics and timers
+        self._global_timer = Stopwatch()
+        self._sampling_timer = Stopwatch()
+        self._learning_timer = Stopwatch()
+
+        self._timesteps_total = 0
+        self._episodes_total = 0
+
+        self._current_iteration = 0
+
+    def _initial_state(self, batch_size=1):
+        return self._online_network.get_h0(batch_size, self._device)
+
+    def _q_values(self, obs, state):
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=device)
+        q_values, state = self._online_network(obs.reshape([1,1,-1]), state)
+        return q_values.reshape([-1]).numpy(), state
+    
+    def _priority(self, td_errors):
+        abs_td = td_errors.abs()
+        max_error = abs_td.max(dim=-1)
+        mean_error = abs_td.mean(dim=-1)
+
+        priority = self._replay_eta * max_error + (1 - self._replay_eta) * mean_error
+        return (priority + self._replay_epsilon) ** self._replay_alpha
+
+    def _loss(self, batch, weights, seq_lens):
+        h0 = self._initial_state(len(weights))
+
+        mask = [torch.ones(l) for l in seq_lens]
+        mask = nn.utils.rnn.pad_sequence(mask, batch_first=True)
+
+        online_q, _ = self._online_network(batch[OBS], h0)
+        target_q, _ = self._target_network(batch[NEXT_OBS], h0)
+
+        if self._double_q:
+            max_actions = online_q.argmax(-1).unsqueeze(-1)
+            target_q = torch.gather(target_q, -1, max_actions).squeeze(-1)
+        else:
+            target_q, _ = target_q.max(-1)
+
+        online_q = torch.gather(online_q, -1, batch[ACTION].unsqueeze(-1)).squeeze(-1)
+
+        q_targets = batch[REWARD] + self._gamma * (1 - batch[DONE]) * target_q
+        q_targets = q_targets.detach()
+
+        errors = nn.functional.smooth_l1_loss(online_q, q_targets, beta=self._beta, reduction='none')
+        loss = torch.mean(weights * torch.mean(mask * errors, -1))
+
+        td_errors = online_q.detach() - q_targets
+        return loss, td_errors
+
+    def _rollout(self, num_episodes, explore=True, fetch_q=True):
+        episodes = []
+        r_mean = 0
+        r_max = -np.inf
+        r_min = np.inf
+        timesteps = 0
         
-        self._optimizer = Adam(self._online_network.parameters(), lr=lr)
-        self._iterations = 0
+        for _ in range(num_episodes):
+            state = self._initial_state()
+            obs = self._env.reset()
+            done = False
 
-        self._state = None
+            episode = defaultdict(list)
+            episode[OBS].append(obs)
 
-    def _loss(self, obs_batch, next_obs_batch, action_batch, reward_batch, done_batch, mask):
-        h0 = self._online_network.get_h0(obs_batch.shape[1])
-        h0 = (h0[0].to(self._device), h0[1].to(self._device))
-        online_q, _ = self._online_network(obs_batch, h0)  # Need batched history
-        target_q, _ = self._target_network(next_obs_batch, h0)
+            while not done:
+                q_values = self._q_values(obs, state)
 
-        q_targets = reward_batch + self._gamma * (1 - done_batch) * target_q.max(-1).values
-        online_q = (action_batch * online_q).sum(-1)
+                if explore and np.random.random() <= self._epsilon:
+                    action = self._env.action_space.sample()
+                else:
+                    action = q_values.argmax()
+                
+                obs, reward, done, _ = self._env.step(action)
 
-        errors = nn.functional.smooth_l1_loss(online_q, q_targets.detach(), beta=self._beta, reduction='none')
-        return torch.mean(mask * errors)
+                episode[OBS].append(obs)
+                episode[ACTION].append(action)
+                episode[REWARD].append(reward)
+                episode[DONE].append(done)
 
-    def reset(self, batch_size=1):
-        self._state = self._online_network.get_h0(batch_size)
-        self._state = (self._state[0].to(self._device), self._state[1].to(self._device))
+                if fetch_q:
+                    episode["q_values"].append(q_values)
+                    episode["action_q"].append(q_values[action])
 
-    def act(self, obs, explore=True):
-        q_values, self._state = self._online_network(obs.reshape([1,1,-1]), self._state)
+                timesteps += 1
 
-        if explore and np.random.random() <= self._epsilon:
-            return self._env.action_space.sample()
+            for key in episode.keys():
+                episode[key] = np.stack(episode[key])
+            
+            episode[NEXT_OBS] = episodes[OBS][1:]
+            episode[OBS] = episodes[OBS][:-1]
 
-        return q_values.reshape([-1]).argmax()
+            episodes[ACTION] = np.eye(self._env.action_space.n)[episodes[ACTION]]
 
-    def train(self):  # NOTE: For this script, we just do sampling within the 'train' method
-        self._iterations += 1
+            episodes.append(episode)
+
+            total_reward = sum(episode[REWARD])
+            r_mean += total_reward
+            r_max = max(r_max, total_reward)
+            r_min = min(r_min, total_reward)
+
+        return episodes, {
+            "reward_mean": r_mean / num_episodes,
+            "reward_max": r_max,
+            "reward_mean": r_min,
+            "episodes": num_episodes,
+            "timesteps": timesteps,
+        }
+
+    def train(self):
+        self._global_timer.start()
+
+        # Sync online and target networks at fixed intervals
         if self._iterations % self._sync_interval == 0:
             parameters = self._online_network.state_dict()
             self._target_network.load_state_dict(parameters)
 
-        for _ in range(self._num_episodes):
-            observations = []
-            actions = []
-            rewards = []
-            dones = []
+        # Generate training samples
+        self._sampling_timer.start()
+        if 0.0 != self._replay_alpha:
+            samples, sample_stats = self._rollout(self._iteration_episodes, fetch_q=True)
 
-            self.reset()
-            obs = self._env.reset()
-            observations.append(obs)
-            done = False
+            # Compute sample priorities
+            priorities = []
+            for sample in samples:
+                max_q = sample["q_values"][1:].max(-1)
+                q_targets = sample[REWARD].copy()
+                q_targets[:-1] += self._gamma * sample[DONE][:-1] * max_q
+                
+                priorities.append(self._priority(sample["action_q"] - q_targets))
 
-            while not done:
-                action = self.act(torch.as_tensor(obs, dtype=torch.float32, device=self._device))
-                obs, reward, done, _ = self._env.step(action)
+                del sample["q_values"]
+                del sample["action_q"]
+        else:
+            samples, sample_stats = self._rollout(self._iteration_episodes, fetch_q=False)
+            priorities = None
 
-                observations.append(obs)
-                actions.append(action)
-                rewards.append(reward)
-                dones.append(done)
+        self._replay_buffer.add(samples, priorities)
+        self._sampling_timer.stop()
 
-            self._replay_buffer.add(observations, actions, rewards, dones)
-
+        # Do training updates
+        self._learning_timer.start()
         for _ in range(self._num_batches):
-            batch = self._replay_buffer.sample(self._batch_size)
+            batch, weights, seq_lengths, indices = self._replay_buffer.sample(self._batch_size)
             self._optimizer.zero_grad()
-            loss = self._loss(*batch).mean()
+            loss, td_errors = self._loss(batch, weights, seq_lengths)
             loss.backward()
             self._optimizer.step()
+            ReplayBuffer.update_priorities(self._priority(td_errors))
+        
+        self._learning_timer.stop()
+
+        # Update exploration rate
+        if self._current_iteration < self._epsilon_iterations:
+            self._epsilon -= self._epsilon_decay
+
+        # Update replay beta
+        self._replay_beta = min(1.0, self._replay_beta + self._replay_beta_step)
+
+        # Increment iteration
+        self._current_iteration += 1
+
+        # Do evaluation if needed
+        if self._current_iteration % self._eval_iterations == 0:
+            _, eval_stats = self._rollout(self._eval_episodes, explore=False, fetch_q=False)
+
+        # Return statistics
+        self._global_timer.stop()
+        stats = {}
+
+        for key, value in sample_stats.items():
+            stats["sampling/" + key] = value
+
+        for key, value in eval_stats.items():
+            stats["eval/" + key] = value
+
+        self._episodes_total += sample_stats["episodes"]
+        self._timesteps_total += sample_stats["timesteps"]
+
+        stats["episodes_total"] = self._episodes_total
+        stats["timesteps_total"] = self._timesteps_total
+
+        stats["global_time_s"] = self._global_timer.elapsed()
+        stats["sampling_time_s"] = self._sampling_timer.elapsed()
+        stats["learning_time_s"] = self._learning_timer.elapsed()
+
+        return stats
     
     def save(self, path):
         torch.jit.save(self._online_network, path)
 
 
-def evaluate(env, policy, num_episodes=30, device='cpu'):
-    total_reward = 0
-    total_successes = 0
-
-    for _ in range(num_episodes):
-        policy.reset()
-        obs = env.reset()
-        episode_reward = 0
-        done = False
-
-        while not done:
-            action = policy.act(torch.as_tensor(obs, dtype=torch.float32, device=device), explore=False)
-            obs, reward, done, _ = env.step(action)
-            episode_reward += reward
-        
-        total_reward += episode_reward
-        if episode_reward > 0:
-            total_successes += 1
-
-    return (total_reward / num_episodes), (total_successes / num_episodes)
-
-
 class MemoryGame(gym.Env):
     '''An instance of the memory game with noisy observations'''
 
-    def __init__(self, length=5, num_cues=2, noise=0.1):
-        self.observation_space = Box(0, 2, shape=(num_cues + 2,))
-        self.action_space = Discrete(num_cues)
-        self._length = length
-        self._num_cues = num_cues 
-        self._noise = noise       
+    def __init__(self, config={}):
+        self._length = config.get("length", 5)
+        self._num_cues =config.get("num_cues", 2)
+        self._noise = config.get("noise", 0.1)
+
+        self.observation_space = Box(0, 2, shape=(self._num_cues + 2,))
+        self.action_space = Discrete(self._num_cues)
+
         self._current_step = 0
         self._current_cue = 0
 
@@ -424,38 +501,66 @@ class MemoryGame(gym.Env):
             return self._obs(), reward, True, {}
 
 
+def parse_args():
+    parser = argparse.ArgumentParser("Training script for R2D2 with prioritized replay, using the memory game")
+
+    parser.add_argument("-f", "--config-file", type=str, default=None,
+                        help="If specified, use config options from this file")
+    parser.add_argument("-o", "--output-path", type=str, default="results/debug/R2D2",
+                        help="directory in which we should save results")
+    parser.add_argument("-i", "--iterations", type=int, default=1000,
+                        help="number of training iterations to run experiment for")
+    parser.add_argument("-g", "--gpu", action="store_true",
+                        help="enable GPU if available")
+
+    return parser.parse_args()
+
+
 if __name__ == "__main__":
-    device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    args = parse_args()
 
-    stopwatch = Stopwatch()
-    stopwatch.start()
+    # Get torch device
+    device = "cuda" if args.gpu else "cpu"
+    print("\nTraining R2D2 on device '{device}'")
 
-    training_epochs = 500
-
-    env = MemoryGame(10, 4)
-    # env = CoordinationGame(20, 16, ['fixed'])
-    agent = R2D2(env, device=device)
-
-    print("\n===== Training =====")
-
-    for epoch in range(training_epochs):
-        agent.train()
-        mean_reward, success_rate = evaluate(env, agent, device=device)
-
-        print(f"\n----- Epoch {epoch + 1} -----")
-        print(f"    mean return: {mean_reward}")
-        print(f"    success rate: {success_rate * 100}%")
+    # Load experiment config
+    if args.config_file is None:  # Use default config
+        print("using default config")
+        config = {}
+    else:
+        print(f"using config file: {args.config_file}")
+        with open(args.config_file) as f:
+            config = yaml.load(f, Loader=yaml.FullLoader)
     
-    # agent.save("torch_r2d2.pt")
+    # Create results directory
+    path = make_unique_dir(args.output_path)
+    print(f"saving results to: {path}")
 
-    # model = torch.jit.load("torch_r2d2.pt")
-    # policy = Policy(model)
+    # Save config (with torch device and iteration count)
+    config["device"] = device
+    config["iterations"] = args.iterations
+    with open(os.path.join(path, "config.yaml"), 'w') as config_file:
+        yaml.dump(config, config_file)
 
-    # mean_reward, success_rate = evaluate(env, policy)
+    # Initialize Memory Environemnt
+    env = MemoryGame(config.get("env", {}))
 
-    # print(f"\n----- Serialized Model -----")
-    # print(f"    mean return: {mean_reward}")
-    # print(f"    success rate: {success_rate * 100}%")
+    # Initialize R2D2
+    learner = R2D2(env, config)  # NOTE: Could initialize environment within learner
 
-    stopwatch.stop()
-    print(f"\nElapsed Time: {stopwatch.elapsed()}s")
+     # Start TensorboardX
+    with SummaryWriter(path) as writer:
+        for iteration in range(args.iterations):
+            stats = learner.train()
+
+            for key, value in stats.items():
+                writer.add_scalar(key, value, iteration)
+            
+            if "eval/reward_mean" in stats:
+                print(f"\nIteration {iteration}")
+                print(f"mean eval reward: {stats['eval/reward_mean']}")
+                print(f"episodes: {stats['episodes_total']}")
+                print(f"time: {stats['global_time_s']}s")
+
+    # Save policy
+    learner.save(os.path.join(path, "policy.pt"))
