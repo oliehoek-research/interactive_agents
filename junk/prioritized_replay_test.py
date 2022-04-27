@@ -234,14 +234,14 @@ class R2D2:
         self._num_batches = config.get("num_batches", 16)
         self._batch_size = config.get("batch_size", 16)  # NOTE: Need to look at R2D2 configs from stable-baselines, RLLib
         self._sync_iterations = config.get("sync_iterations", 1)
-        self._learning_starts = config.get("learning_starts", 20)
+        self._learning_starts = config.get("learning_starts", 10)
         self._gamma = config.get("gamma", 0.99)
         self._beta = config.get("beta", 0.5)
         self._double_q = config.get("double_q", True)
         self._device = device
 
         # Epsilon-greedy exploration
-        self._epsilon = config.get("epsilon_initial", 0.1)
+        self._epsilon = config.get("epsilon_initial", 1)
         self._epsilon_iterations = config.get("epsilon_iterations", 1000)
         self._epsilon_decay = self._epsilon - config.get("epsilon_final", 0.01)
         self._epsilon_decay /= self._epsilon_iterations
@@ -249,10 +249,10 @@ class R2D2:
         # Replay buffer
         self._replay_alpha = config.get("replay_alpha", 0.6)
         self._replay_epsilon = config.get("replay_epsilon", 0.01)
-        self._replay_eta = config.get("replay_eta", 0.9)
+        self._replay_eta = config.get("replay_eta", 0.5)
         self._replay_beta = 0.0
         self._replay_beta_step = 1.0 / config.get("replay_beta_iterations", 1000)
-        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 16000), 0.0 != self._replay_alpha)
+        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048), 0.0 != self._replay_alpha)
 
         # Q-Networks
         dueling = config.get("dueling", True)
@@ -285,7 +285,7 @@ class R2D2:
         return self._online_network.get_h0(batch_size, self._device)
 
     def _q_values(self, obs, state):
-        obs = torch.as_tensor(obs, dtype=torch.float32, device=device)
+        obs = torch.as_tensor(obs, dtype=torch.float32, device=self._device)
         q_values, state = self._online_network(obs.reshape([1,1,-1]), state)
         return q_values.detach().reshape([-1]).numpy(), state
     
@@ -548,7 +548,30 @@ if __name__ == "__main__":
             "env": {
                 "length": 5,  # NOTE: Seems to be running episodes for one step longer?
                 "num_cues": 4,
+                "noise": 0.1,
             },
+            "eval_iterations": 10,
+            "eval_episodes": 32,
+            "iteration_episodes": 16,
+            "num_batches": 8,
+            "batch_size": 16,
+            "sync_iterations": 1,
+            "learning_starts": 10,
+            "gamma": 0.99,
+            "beta": 0.5,
+            "double_q": True,
+            "epsilon_initial": 1,
+            "epsilon_iterations": 1000,
+            "epsilon_final": 0.01,
+            "replay_alpha": 0.6,
+            "replay_epsilon": 0.01,
+            "replay_eta": 0.5,
+            "replay_beta_iterations": 1000,
+            "buffer_size": 4096,
+            "dueling": True,
+            "hidden_size": 64,
+            "hidden_layers": 1,
+            "lr": 0.01,
         }
     else:
         print(f"using config file: {args.config_file}")
