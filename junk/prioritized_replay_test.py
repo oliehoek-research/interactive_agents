@@ -36,13 +36,18 @@ class Stopwatch:
         return self._elapsed
 
 
-def make_unique_dir(path):
-    sub_path = os.path.join(path, str(0))
+def make_unique_dir(path, tag=None):
+    if tag is None:
+        tag = ""
+    else:
+        tag = tag + "_"
+
+    sub_path = os.path.join(path, tag + str(0))
     idx = 0
 
     while os.path.exists(sub_path):
         idx += 1
-        sub_path = os.path.join(path, str(idx))
+        sub_path = os.path.join(path, tag + str(idx))
     
     os.makedirs(sub_path)
     return sub_path
@@ -77,13 +82,47 @@ class LSTMNet(nn.Module):
 
     @torch.jit.export
     def get_h0(self, batch_size: int=1, device: str="cpu"):
-        # NOTE: May be a problem with the order of the initial state
         shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
 
         hidden = torch.zeros(shape, dtype=torch.float32)
         cell = torch.zeros(shape, dtype=torch.float32)
         
         return hidden.to(device), cell.to(device)
+
+
+class GRUNet(nn.Module):
+    
+    def __init__(self, observation_space, action_space, hidden_size=32, hidden_layers=1, deuling=False):
+        super(GRUNet, self).__init__()
+        self._hidden_size = hidden_size
+        self._hidden_layers = hidden_layers
+        self._deuling = deuling
+
+        input_size = int(np.prod(observation_space.shape))  # NOTE: Need to cast for TorchScript to work
+        self._lstm = nn.GRU(input_size, hidden_size, hidden_layers)
+        self._q_function = nn.Linear(hidden_size, action_space.n)
+
+        if deuling:
+            self._value_function = nn.Linear(hidden_size, 1)
+
+    def forward(self, 
+            obs: torch.Tensor, 
+            hidden: Optional[torch.Tensor]=None):
+        outputs, hidden = self._lstm(obs, hidden)
+        Q = self._q_function(outputs)
+
+        if self._deuling:
+            V = self._value_function(outputs)
+            Q += V - Q.mean(2, keepdim=True)
+
+        return Q, hidden
+
+    @torch.jit.export
+    def get_h0(self, batch_size: int=1, device: str="cpu"):
+        shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
+        cell = torch.zeros(shape, dtype=torch.float32)
+        
+        return cell.to(device)
 
 
 class PriorityTree:
@@ -255,12 +294,14 @@ class R2D2:
         self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048), 0.0 != self._replay_alpha)
 
         # Q-Networks
+        net_cls = GRUNet if config.get("model", "lstm") == "gru" else LSTMNet
+
         dueling = config.get("dueling", True)
         hidden_size = config.get("hidden_size", 64)
         hidden_layers = config.get("hidden_layers", 1)
 
-        self._online_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
-        self._target_network = LSTMNet(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
+        self._online_network = net_cls(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
+        self._target_network = net_cls(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
         
         self._online_network = torch.jit.script(self._online_network)
         self._target_network = torch.jit.script(self._target_network)
@@ -322,8 +363,8 @@ class R2D2:
         errors = nn.functional.smooth_l1_loss(online_q, q_targets, beta=self._beta, reduction='none')
         loss = torch.mean(weights * torch.mean(mask * errors, 0))
 
-        td_errors = online_q - q_targets
-        return loss, td_errors.detach()
+        td_errors = torch.abs(online_q - q_targets)
+        return loss, td_errors
 
     def _rollout(self, num_episodes, explore=True, fetch_q=True):
         episodes = []
@@ -395,6 +436,42 @@ class R2D2:
             "timesteps": timesteps,
         }
 
+    def _learn(self):
+        outputs = defaultdict(list)
+
+        for _ in range(self._num_batches):   
+
+            # Sample batch 
+            batch, weights, seq_lengths, indices = \
+                self._replay_buffer.sample(self._batch_size, self._beta)
+            
+            outputs["replay_weight"].append(weights)
+
+            # Compute loss and do gradient update
+            self._optimizer.zero_grad()
+            loss, td_errors = self._loss(batch, weights, seq_lengths)
+            loss.backward()
+            self._optimizer.step()
+
+            td_errors = td_errors.detach().numpy()
+            outputs["td_error"].append(td_errors)
+            outputs["loss"].append(loss.detach().numpy())
+
+            # Update replay priorities
+            priorities = self._priority(td_errors)
+            self._replay_buffer.update_priorities(indices, priorities)
+
+            outputs["priorities"].append(priorities)
+        
+        stats = {}
+        for key, value in outputs.items():
+            value = np.stack(value)
+            stats[key + "_mean"] = value.mean()
+            stats[key + "_max"] = value.max()
+            stats[key + "_min"] = value.min()
+        
+        return stats
+
     def train(self):
         self._global_timer.start()
         stats = {}
@@ -431,27 +508,22 @@ class R2D2:
             stats["sampling/" + key] = value
 
         # Do training updates
-        if self._current_iteration <= self._learning_starts:
+        if self._current_iteration >= self._learning_starts:  # NOTE: Stupid stupid stupid, wasn't training anything!!!
             self._learning_timer.start()
-            for _ in range(self._num_batches):
-                batch, weights, seq_lengths, indices = \
-                    self._replay_buffer.sample(self._batch_size, self._beta)
-                self._optimizer.zero_grad()
-                loss, td_errors = self._loss(batch, weights, seq_lengths)
-                loss.backward()
-                self._optimizer.step()
-
-                priorities = self._priority(td_errors.numpy())
-                self._replay_buffer.update_priorities(indices, priorities)
-            
+            learning_stats = self._learn()
             self._learning_timer.stop()
+
+            for key, value in learning_stats.items():
+                stats["learning/" + key] = value  # NOTE: The fact that we don't record learning values for the first few iterations seems to cause problems
 
         # Update exploration rate
         if self._current_iteration < self._epsilon_iterations:
             self._epsilon -= self._epsilon_decay
+        stats["global/epsilon"] = self._epsilon
 
         # Update replay beta
         self._replay_beta = min(1.0, self._replay_beta + self._replay_beta_step)
+        stats["global/replay_beta"] = self._replay_beta
 
         # Increment iteration
         self._current_iteration += 1
@@ -469,12 +541,12 @@ class R2D2:
         self._episodes_total += sample_stats["episodes"]
         self._timesteps_total += sample_stats["timesteps"]
 
-        stats["episodes_total"] = self._episodes_total
-        stats["timesteps_total"] = self._timesteps_total
+        stats["global/episodes_total"] = self._episodes_total
+        stats["global/timesteps_total"] = self._timesteps_total
 
-        stats["global_time_s"] = self._global_timer.elapsed()
-        stats["sampling_time_s"] = self._sampling_timer.elapsed()
-        stats["learning_time_s"] = self._learning_timer.elapsed()
+        stats["global/total_time_s"] = self._global_timer.elapsed()
+        stats["global/sampling_time_s"] = self._sampling_timer.elapsed()
+        stats["global/learning_time_s"] = self._learning_timer.elapsed()
 
         return stats
     
@@ -530,6 +602,8 @@ def parse_args():
                         help="number of training iterations to run experiment for")
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="enable GPU if available")
+    parser.add_argument("-t", "--tag", type=str, default="",
+                        help="name for experiment")
 
     return parser.parse_args()
 
@@ -546,8 +620,8 @@ if __name__ == "__main__":
         print("using default config")
         config = {
             "env": {
-                "length": 5,  # NOTE: Seems to be running episodes for one step longer?
-                "num_cues": 4,
+                "length": 80,
+                "num_cues": 2,
                 "noise": 0.1,
             },
             "eval_iterations": 10,
@@ -555,23 +629,24 @@ if __name__ == "__main__":
             "iteration_episodes": 16,
             "num_batches": 8,
             "batch_size": 16,
-            "sync_iterations": 1,
+            "sync_iterations": 5,
             "learning_starts": 10,
             "gamma": 0.99,
             "beta": 0.5,
-            "double_q": True,
-            "epsilon_initial": 1,
+            "double_q": False,
+            "epsilon_initial": 0.5,
             "epsilon_iterations": 1000,
             "epsilon_final": 0.01,
-            "replay_alpha": 0.6,
+            "replay_alpha": 0.0,
             "replay_epsilon": 0.01,
             "replay_eta": 0.5,
             "replay_beta_iterations": 1000,
             "buffer_size": 4096,
+            "model": "lstm",
             "dueling": True,
             "hidden_size": 64,
             "hidden_layers": 1,
-            "lr": 0.01,
+            "lr": 0.001,
         }
     else:
         print(f"using config file: {args.config_file}")
@@ -579,7 +654,7 @@ if __name__ == "__main__":
             config = yaml.load(f, Loader=yaml.FullLoader)
     
     # Create results directory
-    path = make_unique_dir(args.output_path)
+    path = make_unique_dir(args.output_path, args.tag)
     print(f"saving results to: {path}")
 
     # Save config (with torch device and iteration count)
@@ -605,8 +680,8 @@ if __name__ == "__main__":
             if "eval/reward_mean" in stats:
                 print(f"\nIteration {iteration + 1}")
                 print(f"mean eval reward: {stats['eval/reward_mean']}")
-                print(f"episodes: {stats['episodes_total']}")
-                print(f"time: {stats['global_time_s']}s")
+                print(f"episodes: {stats['global/episodes_total']}")
+                print(f"time: {stats['global/total_time_s']}s")
 
     # Save policy
     learner.save(os.path.join(path, "policy.pt"))
