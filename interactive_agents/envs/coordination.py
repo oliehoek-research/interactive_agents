@@ -1,10 +1,18 @@
-"""N-player repeated coordination game"""
 from gym.spaces import Discrete, Box
 import numpy as np
 import pyglet
 from pyglet.gl import *
 
-class CoordinationGame:
+from .common import MultiagentEnv
+
+class CoordinationGame(MultiagentEnv):
+    """
+    The N-player repeated coordination game.  Players observe all other player's
+    previous actions as concatenated one-hot vectors.
+
+    Supports 'focal point' actions that have slightly smaller payoffs, and
+    suppots permuting action IDs used to implement Other-Play.
+    """
 
     def __init__(self, config={}, spec_only=False):
         self._num_stages = config.get("stages", 5)
@@ -17,12 +25,12 @@ class CoordinationGame:
 
         self._obs_size = self._num_actions * (self._num_players - 1)
 
-        self.observation_space = {}
-        self.action_space = {}
+        self.observation_spaces = {}
+        self.action_spaces = {}
 
         for pid in range(self._num_players):
-            self.observation_space[pid] = Box(0, 1, shape=(self._obs_size,))
-            self.action_space[pid] = Discrete(self._num_actions)
+            self.observation_spaces[pid] = Box(0, 1, shape=(self._obs_size,))
+            self.action_spaces[pid] = Discrete(self._num_actions)
         
         self._current_stage = 0
         self._num_episodes = 0
@@ -35,7 +43,7 @@ class CoordinationGame:
         self._prev = []
         self._last_obs = None
 
-    def _new_permutations(self):
+    def _new_permutations(self):  # TODO: Implement unit tests to make sure this works properly (sample tests are available in the 'junk/other_play_test.py' script)
         self._forward_permutations = {}
         self._backward_permutations = {}
         
