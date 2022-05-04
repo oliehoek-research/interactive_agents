@@ -1,17 +1,25 @@
 from gym.spaces import Discrete, Box
 import numpy as np
 
-class LinguisticGame:
+from .common import MultiagentEnv
+
+# TODO: This enviroment is better suited to the AEC representation
+class LinguisticCoordination(MultiagentEnv):
+    """
+    The 'linguistic' coordination game, in which a speaker privately observes
+    a cue which determines the optimal joint action, and uses a 'cheap-talk'
+    channel to communicate this before both agents act.
+    """
 
     def __init__(self, config={}, spec_only=False):
         self._num_steps = config.get("stages", 5) * 2
         self._num_actions = config.get("actions", 8)
 
-        self.observation_space = {
+        self.observation_spaces = {
             "speaker": Box(0, 1, shape=(self._num_actions * 2 + 1,)),
             "listener": Box(0, 1, shape=(self._num_actions + 1,))
         }
-        self.action_space = {
+        self.action_spaces = {
             "speaker": Discrete(self._num_actions),
             "listener": Discrete(self._num_actions)
         }
