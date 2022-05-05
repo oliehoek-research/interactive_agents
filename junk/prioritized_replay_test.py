@@ -5,6 +5,7 @@ import argparse
 from collections import defaultdict
 import gym
 from gym.spaces import Discrete, Box
+from numbers import Number
 import numpy as np
 import os
 import os.path
@@ -53,24 +54,78 @@ def make_unique_dir(path, tag=None):
     return sub_path
 
 
+def conv_net(input_shape, filters):
+    input_channels = input_shape[0]
+    image_shape = list(input_shape)[1:]
+
+    layers = []
+    for l, (channels, kernel, stride) in enumerate(filters):
+        kernel = list(kernel)
+        padding = []
+        for d in range(len(kernel)):
+            kernel[d] += (kernel[d] + 1) % 2
+            padding.append(kernel[d] // 2)
+
+        layers.append(nn.Conv2d(
+            input_channels,
+            channels,
+            kernel,
+            stride=stride,
+            padding=padding
+        ))
+        input_channels = channels
+        
+        if isinstance(stride, Number):
+            stride = [stride] * len(image_shape)
+
+        for d, s in enumerate(stride):
+            image_shape[d] = -(-image_shape[d] // s) 
+
+        if l < len(filters) - 1:
+            layers.append(nn.ReLU())
+    
+    network = nn.Sequential(*layers)
+    num_features = int(input_channels * np.prod(image_shape))
+    
+    return network, num_features
+
+
 class LSTMNet(nn.Module):
     
-    def __init__(self, observation_space, action_space, hidden_size=32, hidden_layers=1, deuling=False):
+    def __init__(self, observation_space, action_space, deuling=False, network_config={}):
         super(LSTMNet, self).__init__()
-        self._hidden_size = hidden_size
-        self._hidden_layers = hidden_layers
         self._deuling = deuling
 
-        input_size = int(np.prod(observation_space.shape))  # NOTE: Need to cast for TorchScript to work
-        self._lstm = nn.LSTM(input_size, hidden_size, hidden_layers)
-        self._q_function = nn.Linear(hidden_size, action_space.n)
+        if len(observation_space.shape) == 1:
+            input_size = int(observation_space.shape[0])  # NOTE: Need to cast for TorchScript to work
+            self._conv = None
+        elif len(observation_space.shape) == 3:
+            conv_filters = network_config.get("conv-filters", [
+                (8, (5, 5), 2), 
+                (16, (5, 5), 2), 
+                (16, (5, 5), 2)])
+            self._conv, input_size = conv_net(observation_space.shape, conv_filters)
+        
+        self._hidden_size = network_config.get("hidden_size", 32)
+        self._hidden_layers = network_config.get("hidden_layers", 1)
+
+        self._lstm = nn.LSTM(input_size, self._hidden_size, self._hidden_layers)
+        self._q_function = nn.Linear(self._hidden_size, action_space.n)
 
         if deuling:
-            self._value_function = nn.Linear(hidden_size, 1)
+            self._value_function = nn.Linear(self._hidden_size, 1)
 
     def forward(self, 
             obs: torch.Tensor, 
             hidden: Optional[Tuple[torch.Tensor, torch.Tensor]]=None):
+
+        if self._conv is not None:
+            base_shape = list(obs.shape)
+            obs = obs.reshape([base_shape[0] * base_shape[1]] + base_shape[2:])
+            obs = self._conv(obs)
+            obs = torch.flatten(obs, start_dim=1)
+            obs = obs.reshape((base_shape[0], base_shape[1], -1))
+        
         outputs, hidden = self._lstm(obs, hidden)
         Q = self._q_function(outputs)
 
@@ -295,19 +350,19 @@ class R2D2:
 
         # Q-Networks
         net_cls = GRUNet if config.get("model", "lstm") == "gru" else LSTMNet
-
+        network_config = config.get("model_config", {})
         dueling = config.get("dueling", True)
-        hidden_size = config.get("hidden_size", 64)
-        hidden_layers = config.get("hidden_layers", 1)
 
-        self._online_network = net_cls(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
-        self._target_network = net_cls(env.observation_space, env.action_space, hidden_size, hidden_layers, dueling)
+        self._online_network = net_cls(env.observation_space, env.action_space, dueling, network_config)
+        self._target_network = net_cls(env.observation_space, env.action_space, dueling, network_config)
         
         self._online_network = torch.jit.script(self._online_network)
         self._target_network = torch.jit.script(self._target_network)
 
         self._online_network.to(device)
         self._target_network.to(device)
+
+        self._input_shape = [1, 1] + list(env.observation_space.shape)
 
         # Optimizer
         self._optimizer = Adam(self._online_network.parameters(), lr=config.get("lr", 0.01))
@@ -327,7 +382,7 @@ class R2D2:
 
     def _q_values(self, obs, state):
         obs = torch.as_tensor(obs, dtype=torch.float32, device=self._device)
-        q_values, state = self._online_network(obs.reshape([1,1,-1]), state)
+        q_values, state = self._online_network(obs.reshape(self._input_shape), state)
         return q_values.detach().reshape([-1]).numpy(), state
     
     def _priority(self, td_errors):
@@ -561,14 +616,20 @@ class MemoryGame(gym.Env):
         self._length = config.get("length", 5)
         self._num_cues =config.get("num_cues", 2)
         self._noise = config.get("noise", 0.1)
+        self._image = config.get("image", False)
 
-        self.observation_space = Box(0, 2, shape=(self._num_cues + 2,))
+        if self._image:
+            self._image_size = config.get("image_size", 100)
+            self.observation_space = Box(0, 2, shape=(1, self._image_size, self._image_size))
+        else:
+            self.observation_space = Box(0, 2, shape=(self._num_cues + 2,))
+        
         self.action_space = Discrete(self._num_cues)
 
         self._current_step = 0
         self._current_cue = 0
 
-    def _obs(self):
+    def _vector_obs(self):
         obs = np.random.uniform(0, self._noise, self.observation_space.shape)
         if 0 == self._current_step:
             obs[-2] += 1
@@ -576,6 +637,26 @@ class MemoryGame(gym.Env):
         elif self._length == self._current_step:
             obs[-1] += 1
         return obs
+
+    def _image_obs(self):
+        obs = np.random.uniform(0, self._noise, self.observation_space.shape)
+
+        if 0 == self._current_step:
+            slope = self._current_cue * (2.0 / (self._num_cues - 1)) - 1.0
+            offset = self._image_size // 2
+
+            for x in range(self._image_size):
+                y = int((x - offset) * slope)
+                y = max(0, min(self._image_size - 1, y + offset))
+                obs[0, x, y] += 1.0
+        
+        return obs
+
+    def _obs(self):
+        if self._image:
+            return self._image_obs()
+        else:
+            return self._vector_obs()
 
     def reset(self):
         self._current_step = 0
@@ -620,9 +701,10 @@ if __name__ == "__main__":
         print("using default config")
         config = {
             "env": {
-                "length": 80,
-                "num_cues": 2,
+                "length": 5,
+                "num_cues": 4,
                 "noise": 0.1,
+                "image": True,
             },
             "eval_iterations": 10,
             "eval_episodes": 32,
@@ -630,7 +712,7 @@ if __name__ == "__main__":
             "num_batches": 8,
             "batch_size": 16,
             "sync_iterations": 5,
-            "learning_starts": 10,
+            "learning_starts": 20,
             "gamma": 0.99,
             "beta": 0.5,
             "double_q": False,
@@ -642,10 +724,17 @@ if __name__ == "__main__":
             "replay_eta": 0.5,
             "replay_beta_iterations": 1000,
             "buffer_size": 4096,
-            "model": "lstm",
             "dueling": True,
-            "hidden_size": 64,
-            "hidden_layers": 1,
+            "model": "lstm",
+            "model_config": {
+                "hidden_size": 64,
+                "hidden_layers": 1,
+                "conv_filters": [
+                    (8, (7, 7), 2), 
+                    (8, (7, 7), 2), 
+                    (8, (7, 7), 2)
+                ],
+            },
             "lr": 0.001,
         }
     else:
@@ -685,3 +774,6 @@ if __name__ == "__main__":
 
     # Save policy
     learner.save(os.path.join(path, "policy.pt"))
+
+    # Load policy
+    model = torch.jit.load(os.path.join(path, "policy.pt"))
