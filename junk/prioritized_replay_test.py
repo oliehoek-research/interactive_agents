@@ -115,25 +115,34 @@ class LSTMNet(nn.Module):
         if deuling:
             self._value_function = nn.Linear(self._hidden_size, 1)
 
+        self._aux_value_function = nn.Linear(self._hidden_size, 1)
+        self._aux_value = torch.zeros((1,))
+
     def forward(self, 
             obs: torch.Tensor, 
             hidden: Optional[Tuple[torch.Tensor, torch.Tensor]]=None):
 
         if self._conv is not None:
-            base_shape = list(obs.shape)
-            obs = obs.reshape([base_shape[0] * base_shape[1]] + base_shape[2:])
-            obs = self._conv(obs)
-            obs = torch.flatten(obs, start_dim=1)
-            obs = obs.reshape((base_shape[0], base_shape[1], -1))
+            base_shape = list(obs.shape)  # Should look like [Time x Batch x Channels x W x H]
+            obs = obs.reshape([base_shape[0] * base_shape[1]] + base_shape[2:])  # Combine time and batch into a single dim (conv2d can't handle time)
+            obs = self._conv(obs) # Should return a new sequence of images [(Time x Batch) x New_Channels x New_W x New_H]
+            # obs = torch.flatten(obs, start_dim=1)  # Flatten the images (may not be necessary)
+            obs = obs.reshape((base_shape[0], base_shape[1], -1)) # Separate time and batch dimensions
         
-        outputs, hidden = self._lstm(obs, hidden)
-        Q = self._q_function(outputs)
+        features, hidden = self._lstm(obs, hidden)
+        Q = self._q_function(features)
 
         if self._deuling:
-            V = self._value_function(outputs)
+            V = self._value_function(features)
             Q += V - Q.mean(2, keepdim=True)
 
+        self._aux_value = self._aux_value_function(features)
+
         return Q, hidden
+
+    @torch.jit.export
+    def aux_value(self):
+        return self._aux_value.reshape([-1])
 
     @torch.jit.export
     def get_h0(self, batch_size: int=1, device: str="cpu"):
@@ -701,8 +710,8 @@ if __name__ == "__main__":
         print("using default config")
         config = {
             "env": {
-                "length": 5,
-                "num_cues": 4,
+                "length": 50,
+                "num_cues": 2,
                 "noise": 0.1,
                 "image": True,
             },
@@ -717,12 +726,12 @@ if __name__ == "__main__":
             "beta": 0.5,
             "double_q": False,
             "epsilon_initial": 0.5,
-            "epsilon_iterations": 1000,
+            "epsilon_iterations": 500,
             "epsilon_final": 0.01,
             "replay_alpha": 0.0,
             "replay_epsilon": 0.01,
             "replay_eta": 0.5,
-            "replay_beta_iterations": 1000,
+            "replay_beta_iterations": 500,
             "buffer_size": 4096,
             "dueling": True,
             "model": "lstm",
@@ -777,3 +786,16 @@ if __name__ == "__main__":
 
     # Load policy
     model = torch.jit.load(os.path.join(path, "policy.pt"))
+
+    # Test policy inference
+    obs = env.reset()
+    obs = torch.as_tensor(obs, dtype=torch.float32)
+    obs = obs.unsqueeze(0)
+    obs = obs.unsqueeze(0)
+
+    hidden = model.get_h0()
+    q_values, _ = model(obs, hidden)
+    aux_value = model
+
+    print(f"Q values of loaded model:\n{q_values.detach()}")
+    print(f"Auc value: {aux_value.aux_value().detach()}")
