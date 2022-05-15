@@ -2,7 +2,7 @@
 """Simple script for launching experiments"""
 import argparse
 
-from interactive_agents.core import load_configs, run_experiments
+from interactive_agents.run import load_configs, run_experiments
 
 
 def parse_args():
@@ -14,6 +14,8 @@ def parse_args():
                         help="directory in which we should save results")
     parser.add_argument("-n", "--num-cpus", type=int, default=2,
                         help="the number of parallel worker processes to launch")
+    parser.add_argument("-g", "--gpu", action="store_true",
+                        help="enable GPU if available")
 
     return parser.parse_args()
 
@@ -68,4 +70,7 @@ if __name__ == '__main__':
             }
         }
 
-    run_experiments(experiments, args.output_path, args.num_cpus)
+    device = "cuda" if args.gpu else "cpu"
+    print(f"Training with Torch device '{device}'")
+
+    run_experiments(experiments, args.output_path, args.num_cpus, device)

@@ -1,6 +1,5 @@
 import time
 
-
 class Stopwatch:
 
     def __init__(self):

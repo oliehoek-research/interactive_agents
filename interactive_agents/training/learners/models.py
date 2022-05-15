@@ -5,7 +5,7 @@ import numpy as np
 import os.path
 import torch
 import torch.nn as nn
-from typing import Optional, Tuple, Any
+from typing import Optional, Tuple
 
 DEFAULTS = {
     "model": "lstm",
@@ -19,12 +19,12 @@ DEFAULTS = {
     "conv_activation": "selu",
 }
 
-def build_model(input_shape, model_config):
+def build_model(input_shape, num_outputs, model_config):
     config = DEFAULTS.copy()
     config.update(model_config)
 
     model_cls = get_model_cls(config["model"])
-    return model_cls(input_shape, config)
+    return model_cls(input_shape, num_outputs, config)
 
 
 def get_activation_fn(name):
@@ -106,7 +106,7 @@ def build_conv_layers(input_shape, config):
 
 class DenseNet(nn.Module):
     
-    def __init__(self, input_shape, config):
+    def __init__(self, input_shape, num_outputs, config):
         super(DenseNet, self).__init__()
 
         # Build convolutional layers if needed
@@ -120,18 +120,18 @@ class DenseNet(nn.Module):
 
         layers = []
         for l in range(hidden_layers):
-            layers.append(nn.Linear(
-                input_size,
-                hidden_size
-            ))
+            layers.append(nn.Linear(input_size, hidden_size))
             layers.append(activation())
             input_size = hidden_size
+
+        # Add final linear layer
+        layers.append(nn.Linear(input_size, num_outputs))
 
         self._features = nn.Sequential(*layers)
 
     def forward(self, 
             input: torch.Tensor, 
-            hidden: Optional[Any]=None):  # NOTE: dummy hidden state for feedforward networks
+            state: Optional[torch.Tensor]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
 
         if self._conv is not None:
             base_shape = list(input.shape)
@@ -139,18 +139,16 @@ class DenseNet(nn.Module):
             input = self._conv(input)
             input = input.reshape((base_shape[0], base_shape[1], -1))
 
-        print(f"\n\n\ninput shape: {input.shape}\n\n\n")
-
-        return self._features(input), hidden
+        return self._features(input), state
 
     @torch.jit.export
-    def get_h0(self, batch_size: int=1, device: str="cpu"):
+    def initial_state(self, batch_size: int=1, device: str="cpu") -> None:
         return None
 
 
 class LSTMNet(nn.Module):
     
-    def __init__(self, input_shape, config={}):
+    def __init__(self, input_shape, num_outputs, config={}):
         super(LSTMNet, self).__init__()
 
         # Build convolutional layers if needed
@@ -167,31 +165,34 @@ class LSTMNet(nn.Module):
 
         self._lstm = nn.LSTM(input_size, self._hidden_size, self._hidden_layers)
 
+        # Add final linear layer
+        self._output = nn.Linear(self._hidden_size, num_outputs)
+
     def forward(self, 
             input: torch.Tensor, 
-            hidden: Optional[Tuple[torch.Tensor, torch.Tensor]]=None):
-
+            state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+        
         if self._conv is not None:
             base_shape = list(input.shape)
             input = input.reshape([base_shape[0] * base_shape[1]] + base_shape[2:])
             input = self._conv(input)
             input = input.reshape((base_shape[0], base_shape[1], -1))
         
-        return self._lstm(input, hidden)
+        hidden, cell = torch.split(state, self._hidden_size, dim=-1)
+        features, (hidden, cell) = self._lstm(input, (hidden, cell))
+        return self._output(features), torch.cat((hidden, cell), dim=-1)
 
     @torch.jit.export
-    def get_h0(self, batch_size: int=1, device: str="cpu"):
-        shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
-
-        hidden = torch.zeros(shape, dtype=torch.float32)
-        cell = torch.zeros(shape, dtype=torch.float32)
+    def initial_state(self, batch_size: int=1, device: str="cpu") -> torch.Tensor:
+        shape = [self._hidden_layers, batch_size, self._hidden_size * 2]  # NOTE: Shape must be a list for TorchScript serialization to work
+        state = torch.zeros(shape, dtype=torch.float32)
         
-        return hidden.to(device), cell.to(device)
+        return state.to(device)
 
 
 class GRUNet(nn.Module):
     
-    def __init__(self, input_shape, config={}):
+    def __init__(self, input_shape, num_outputs, config={}):
         super(GRUNet, self).__init__()
         
         # Build convolutional layers if needed
@@ -208,9 +209,12 @@ class GRUNet(nn.Module):
 
         self._gru = nn.GRU(input_size, self._hidden_size, self._hidden_layers)
 
+        # Add final linear layer
+        self._output = nn.Linear(self._hidden_size, num_outputs)
+
     def forward(self, 
             input: torch.Tensor, 
-            hidden: Optional[torch.Tensor]=None):
+            state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
 
         if self._conv is not None:
             base_shape = list(input.shape)
@@ -218,10 +222,11 @@ class GRUNet(nn.Module):
             input = self._conv(input)
             input = input.reshape((base_shape[0], base_shape[1], -1))
         
-        return self._gru(input, hidden)
+        features, state = self._gru(input, state)
+        return self._output(features), state
 
     @torch.jit.export
-    def get_h0(self, batch_size: int=1, device: str="cpu"):
+    def initial_state(self, batch_size: int=1, device: str="cpu") -> torch.Tensor:
         shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
         cell = torch.zeros(shape, dtype=torch.float32)
         
@@ -232,14 +237,14 @@ class GRUNet(nn.Module):
 def serialization_cycle(model, data, output_shape, tmp_path):
     path = os.path.join(tmp_path, "model.pt")
     model = torch.jit.script(model)
-    hidden = model.get_h0(batch_size=data.shape[1])
+    hidden = model.initial_state(batch_size=data.shape[1])
 
     target, _ = model(data, hidden)
     assert tuple(target.shape) == tuple(output_shape)
 
     torch.jit.save(model, path)
     model = torch.jit.load(path)
-    hidden = model.get_h0(batch_size=data.shape[1])
+    hidden = model.initial_state(batch_size=data.shape[1])
 
     output, _ = model(data, hidden)
     assert torch.equal(target, output)
@@ -255,7 +260,7 @@ def serialization_vector(model_name, tmp_path):
     vectors = torch.ones((SEQ_LEN, BATCH_SIZE, VECTOR_SIZE))
     output_shape = (SEQ_LEN, BATCH_SIZE, NUM_FEATURES)
 
-    model = build_model([VECTOR_SIZE], {
+    model = build_model([VECTOR_SIZE], NUM_FEATURES, {
         "model": model_name,
         "hidden_layers": HIDDEN_LAYERS,
         "hidden_size": NUM_FEATURES
@@ -277,7 +282,7 @@ def serialization_image(model_name, tmp_path):
     images = torch.ones([SEQ_LEN, BATCH_SIZE] + IMAGE_SHAPE)
     output_shape = (SEQ_LEN, BATCH_SIZE, NUM_FEATURES)
 
-    model = build_model(IMAGE_SHAPE, {
+    model = build_model(IMAGE_SHAPE, NUM_FEATURES, {
         "model": model_name,
         "hidden_layers": HIDDEN_LAYERS,
         "hidden_size": NUM_FEATURES,

@@ -136,13 +136,7 @@ class LSTMNet(nn.Module):
             V = self._value_function(features)
             Q += V - Q.mean(2, keepdim=True)
 
-        self._aux_value = self._aux_value_function(features)
-
         return Q, hidden
-
-    @torch.jit.export
-    def aux_value(self):
-        return self._aux_value.reshape([-1])
 
     @torch.jit.export
     def get_h0(self, batch_size: int=1, device: str="cpu"):
@@ -710,28 +704,28 @@ if __name__ == "__main__":
         print("using default config")
         config = {
             "env": {
-                "length": 50,
-                "num_cues": 2,
+                "length": 40,
+                "num_cues": 4,
                 "noise": 0.1,
-                "image": True,
+                "image": False,
             },
             "eval_iterations": 10,
             "eval_episodes": 32,
-            "iteration_episodes": 16,
-            "num_batches": 8,
+            "iteration_episodes": 32,
+            "num_batches": 16,
             "batch_size": 16,
             "sync_iterations": 5,
-            "learning_starts": 20,
+            "learning_starts": 50,
             "gamma": 0.99,
             "beta": 0.5,
-            "double_q": False,
+            "double_q": True,
             "epsilon_initial": 0.5,
-            "epsilon_iterations": 500,
+            "epsilon_iterations": 1000,
             "epsilon_final": 0.01,
             "replay_alpha": 0.0,
             "replay_epsilon": 0.01,
             "replay_eta": 0.5,
-            "replay_beta_iterations": 500,
+            "replay_beta_iterations": 1000,
             "buffer_size": 4096,
             "dueling": True,
             "model": "lstm",
@@ -782,20 +776,7 @@ if __name__ == "__main__":
                 print(f"time: {stats['global/total_time_s']}s")
 
     # Save policy
-    learner.save(os.path.join(path, "policy.pt"))
+    # learner.save(os.path.join(path, "policy.pt"))
 
     # Load policy
-    model = torch.jit.load(os.path.join(path, "policy.pt"))
-
-    # Test policy inference
-    obs = env.reset()
-    obs = torch.as_tensor(obs, dtype=torch.float32)
-    obs = obs.unsqueeze(0)
-    obs = obs.unsqueeze(0)
-
-    hidden = model.get_h0()
-    q_values, _ = model(obs, hidden)
-    aux_value = model
-
-    print(f"Q values of loaded model:\n{q_values.detach()}")
-    print(f"Auc value: {aux_value.aux_value().detach()}")
+    # model = torch.jit.load(os.path.join(path, "policy.pt"))
