@@ -1,8 +1,8 @@
-from interactive_agents.training.learners.dqn import DQN
+# from interactive_agents.training.learners.dqn import DQN
 from interactive_agents.training.learners.r2d2 import R2D2
 
 LEARNERS = {
-    "DQN": DQN,
+#     "DQN": DQN,
     "R2D2": R2D2,
 }
 

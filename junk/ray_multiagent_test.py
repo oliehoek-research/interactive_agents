@@ -212,7 +212,7 @@ class DQNLearner:
         return self._online_network.state_dict()
 
 
-class MultiagentSimulator:
+class MultiagentSimulator:  # NOTE: This doesn't inherit from any "actor" interface
 
     def __init__(self, env, policies, policy_mapping_fn, max_steps=None):
         self._env = env
@@ -264,7 +264,7 @@ class MultiagentSimulator:
         return batches
 
 
-class IndependentTrainer:
+class IndependentTrainer:  # NOTE: This doesn't inherit from any "actor" interface
 
     def __init__(self, env_fn, learner_fn, agent_ids, config):
         self._num_episodes = config.get("num_episodes", 100)
@@ -300,7 +300,7 @@ class IndependentTrainer:
     def train(self):
         print("sampling...")
         if self._num_workers > 0:
-            requests = [worker.sample.remote(self._num_episodes) for worker in self._workers]
+            requests = [worker.sample.remote(self._num_episodes) for worker in self._workers]  # NOTE: No interface for initiating independent processes
             batches = []
             for request in requests:
                 batches.append(ray.get(request))
@@ -341,10 +341,10 @@ if __name__ == "__main__":
     }
 
     # Initialize Ray
-    ray.init()
+    ray.init()  # NOTE: How do we check that Ray is shutting down properly?
 
     # Define environment
-    env_fn = lambda: MultiagentWrapper(gym.make("MountainCar-v0"))
+    env_fn = lambda: MultiagentWrapper(gym.make("MountainCar-v0"))  # NOTE: Needed to make the gym interface compatible with our API
     agent_ids = [0]
 
     # Set learner class

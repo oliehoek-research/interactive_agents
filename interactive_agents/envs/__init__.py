@@ -1,8 +1,5 @@
-from interactive_agents.envs.utils import VisualizeGym
-
-
 def get_coordination_game():
-    from interactive_agents.envs.coordination_game import CoordinationGame
+    from interactive_agents.envs.coordination import CoordinationGame
     return CoordinationGame
 
 
@@ -27,8 +24,8 @@ def get_repeated_game():
 
 
 def get_pettingzoo_mpe():
-    from interactive_agents.envs.pettingzoo_mpe import PettingZooMPE
-    return PettingZooMPE
+    from interactive_agents.envs.pettingzoo_mpe import petting_zoo_mpe
+    return petting_zoo_mpe
 
 
 ENVS = {

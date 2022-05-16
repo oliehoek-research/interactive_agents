@@ -1,0 +1,39 @@
+regret_game_coordination_tune:
+    stop:
+        iterations: 20
+    trainer: regret_game
+    num_seeds: 1
+    config:
+        round_iterations: 20
+        burn_in_terations: 100
+        weight_decay: 0.0
+        alice_episodes: 64
+        bob_episodes: 64
+        max_steps: 100
+        env: coordination
+        env_config:
+            stages: 5
+            actions: 4
+        learner: R2D2
+        learner_config:
+            num_batches: 8
+            batch_size: 16
+            sync_iterations: 5
+            learning_starts: 20
+            gamma: 0.99
+            beta: 0.5
+            double_q: True
+            epsilon_initial: 0.5
+            epsilon_iterations: 100
+            epsilon_final: 0.01
+            replay_alpha: 0.6
+            replay_epsilon: 0.01
+            replay_eta: 0.5
+            replay_beta_iterations: 100
+            buffer_size: 8384
+            dueling: True
+            model: lstm
+            model_config:
+                hidden_size": 32
+                hidden_layers": 1
+            lr: 0.001
