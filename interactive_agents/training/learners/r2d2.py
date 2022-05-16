@@ -32,9 +32,9 @@ class QNetwork(nn.Module):
 
     def forward(self, 
             obs: torch.Tensor, 
-            state: Optional[torch.Tensor]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
-        if state is None:
-            state = self._model.initial_state(obs.shape[1], str(obs.device))
+            state: Tuple[torch.Tensor, torch.Tensor]):
+        # if state is None:
+        #    state = self._model.initial_state(obs.shape[1], str(obs.device))
 
         features, state = self._model(obs, state)
         Q = features[:,:,:self._num_actions]
@@ -46,7 +46,7 @@ class QNetwork(nn.Module):
         return Q, state
 
     @torch.jit.export
-    def initial_state(self, batch_size: int=1, device: str="cpu") -> Optional[torch.Tensor]:
+    def initial_state(self, batch_size: int=1, device: str="cpu"):
         return self._model.initial_state(batch_size, device)
 
 
@@ -59,12 +59,12 @@ class QPolicy(nn.Module):
 
     def forward(self, 
             obs: torch.Tensor, 
-            state: Optional[torch.Tensor]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+            state: Tuple[torch.Tensor, torch.Tensor]):
         Q, state = self._model(obs, state)
         return Q.argmax(-1), state
     
     @torch.jit.export
-    def initial_state(self, batch_size: int=1, device: str="cpu") -> Optional[torch.Tensor]:
+    def initial_state(self, batch_size: int=1, device: str="cpu"):
         return self._model.initial_state(batch_size, device)
 
 
@@ -220,8 +220,7 @@ class R2D2Policy:
         self._device = device
 
         self._q_network = QNetwork(obs_space, 
-            action_space, network_config, dueling)
-        self._q_network = QNetwork.to(device)
+            action_space, network_config, dueling).to(device)
     
     def act(self, obs, state):
         obs = torch.as_tensor(obs, 
@@ -230,7 +229,7 @@ class R2D2Policy:
         obs = obs.unsqueeze(0)  # Add time dimension (for RNNs)
 
         q_values, state = self._q_network(obs, state)
-        q_values = q_values.numpy()  # Convert back to a numpy array
+        q_values = q_values.detach().cpu().numpy()  # Convert back to a numpy array
         q_values = q_values.squeeze(0)  # Remove time dimension
         q_values = q_values.squeeze(0)  # Remove batch dimension
 
@@ -282,7 +281,7 @@ class R2D2:
         self._replay_beta_step = 1.0 / config.get("replay_beta_iterations", 1000)
         self._replay_prioritize = 0.0 != self._replay_alpha
         self._replay_buffer = RecurrentReplayBuffer(
-            config.get("buffer_size", 2048), self._replay_prioritize)
+            config.get("buffer_size", 2048), self._replay_prioritize, self._device)
 
         # Q-Networks
         self._network_config = config.get("model_config", {})
@@ -314,12 +313,12 @@ class R2D2:
         return (priority + self._replay_epsilon) ** self._replay_alpha
 
     def _loss(self, batch, weights, seq_lens):
-        h0 = self._initial_state(len(weights))
+        h0 = self._online_network.initial_state(len(weights), self._device)
 
-        mask = [torch.ones(l) for l in seq_lens]
+        mask = [torch.ones(l, device=self._device) for l in seq_lens]
         mask = nn.utils.rnn.pad_sequence(mask)
 
-        weights = torch.as_tensor(weights, dtype=torch.float32)
+        weights = torch.as_tensor(weights, dtype=torch.float32, device=self._device)
 
         online_q, _ = self._online_network(batch[Batch.OBS], h0)
         target_q, _ = self._target_network(batch[Batch.NEXT_OBS], h0)
@@ -358,9 +357,9 @@ class R2D2:
             loss.backward()
             self._optimizer.step()
 
-            td_errors = td_errors.detach().numpy()
+            td_errors = td_errors.detach().cpu().numpy()
             outputs["td_error"].append(td_errors)
-            outputs["loss"].append(loss.detach().numpy())
+            outputs["loss"].append(loss.detach().cpu().numpy())
 
             # Update replay priorities
             priorities = self._priority(td_errors)

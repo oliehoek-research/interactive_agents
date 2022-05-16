@@ -1,5 +1,6 @@
 from collections import defaultdict
 from datetime import datetime
+from multiprocessing.sharedctypes import Value
 from git import Repo
 from multiprocessing import Pool
 import numpy as np
@@ -30,7 +31,7 @@ def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
 
 
-def run_trail(base_path, config, seed, device):
+def run_trail(base_path, config, seed, device, verbose):
     path = os.path.join(base_path, f"seed_{seed}")  
     os.makedirs(path)
 
@@ -40,7 +41,8 @@ def run_trail(base_path, config, seed, device):
 
     # Build trainer
     trainer_cls = get_trainer_class(config.get("trainer", "independent"))
-    trainer = trainer_cls(config.get("config", {}), seed=seed, device=device)
+    trainer = trainer_cls(config.get("config", {}),
+        seed=seed, device=device, verbose=verbose)
     
     # Run trainer with TensorboardX logging
     stat_values = defaultdict(list)
@@ -70,7 +72,7 @@ def run_trail(base_path, config, seed, device):
     # Build and save data frame
     series = {}
     for key, values in stat_values.items():
-        series[key] = pandas.Series(np.asarray(values), np.asarray(stat_indices))
+        series[key] = pandas.Series(np.asarray(values), np.asarray(stat_indices[key]))
 
     dataframe = pandas.DataFrame(series)
     dataframe.to_csv(os.path.join(path, "results.csv"))
@@ -84,7 +86,7 @@ def run_trail(base_path, config, seed, device):
         torch.jit.save(policy, os.path.join(path, f"{id}.pt"))
 
 
-def launch_experiment(path, name, config, pool, device):
+def launch_experiment(path, name, config, pool, device, verbose):
     path = make_unique_dir(path, name)
 
     # Save experiment configuration
@@ -114,12 +116,12 @@ def launch_experiment(path, name, config, pool, device):
     for seed in seeds:
         print(f"launching: {name} - seed: {seed}")
         trials.append(pool.apply_async(run_trail, 
-            (path, config, seed, device), error_callback=print_error))
+            (path, config, seed, device, verbose), error_callback=print_error))
     
     return trials
 
 
-def run_experiments(experiments, base_path, num_cpus=1, device="cpu"):
+def run_experiments(experiments, base_path, num_cpus=1, device="cpu", verbose=False):
 
     # Limit CPU paralellism globally
     torch.set_num_threads(num_cpus)
@@ -134,7 +136,7 @@ def run_experiments(experiments, base_path, num_cpus=1, device="cpu"):
         variations = grid_search(name, config)
 
         if variations is None:
-            trials += launch_experiment(base_path, name, config, pool, device)
+            trials += launch_experiment(base_path, name, config, pool, device, verbose)
         else:
             exp_path = make_unique_dir(base_path, name)
 
@@ -143,7 +145,7 @@ def run_experiments(experiments, base_path, num_cpus=1, device="cpu"):
                 yaml.dump({name: config}, config_file)
 
             for var_name, var_config in variations.items():
-                trials += launch_experiment(exp_path, var_name, var_config, pool)
+                trials += launch_experiment(exp_path, var_name, var_config, pool, device, verbose)
 
     # Wait for trails to complete before returning
     for trial in trials:

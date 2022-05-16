@@ -45,7 +45,7 @@ class Batch:
         self._policy_map = policy_map
 
         for agent_id, obs in initial_obs.items():
-            self._agent_episodes[agent_id].append(obs)
+            self._agent_episodes[agent_id][Batch.OBS].append(obs)
 
     def end_episode(self):
         if self._agent_episodes is not None:
@@ -113,7 +113,7 @@ class FrozenPolicy:
 
 
 # TODO: Enable support for multiple policies maintained by a single actor (needed for SAD, CC methods)
-def sample(env, policies, policy_fn=None, num_episodes=128, max_steps=1e6):
+def sample(env, policies, num_episodes=128, max_steps=1e6, policy_fn=None):
     """Generates a batch of episodes using the given policies"""
     batch = Batch()
     total_steps = 0
@@ -169,8 +169,8 @@ def sample(env, policies, policy_fn=None, num_episodes=128, max_steps=1e6):
         for episode in agent_batch:
             episode_reward = np.sum(episode[Batch.REWARD])
             r_mean += episode_reward
-            r_max += max(r_max, episode_reward)
-            r_min += min(r_min, episode_reward)
+            r_max = max(r_max, episode_reward)
+            r_min = min(r_min, episode_reward)
 
         r_mean /= len(agent_batch)
         stats[str(policy_id) + "/reward_mean"] = r_mean

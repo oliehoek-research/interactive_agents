@@ -1,22 +1,21 @@
-r2d2_regret_game_coordination:
+regret_game_coordination_tune:
     stop:
-        total_iterations: 500
+        iterations: 20
     trainer: regret_game
     num_seeds: 1
     config:
-        round_iterations: 1
-        burn_in_iterations: 500
+        round_iterations: 20
+        burn_in_terations: 100
         weight_decay: 0.0
-        max_steps: 20
         alice_episodes: 64
         bob_episodes: 64
+        max_steps: 100
         env: coordination
         env_config:
-            stages: 8
-            actions: 5
-            players: 2
-        alice: R2D2
-        alice_config:
+            stages: 5
+            actions: 4
+        learner: R2D2
+        learner_config:
             num_batches: 8
             batch_size: 16
             sync_iterations: 5
@@ -25,12 +24,12 @@ r2d2_regret_game_coordination:
             beta: 0.5
             double_q: True
             epsilon_initial: 0.5
-            epsilon_iterations: 300
+            epsilon_iterations: 100
             epsilon_final: 0.01
             replay_alpha: 0.6
             replay_epsilon: 0.01
             replay_eta: 0.5
-            replay_beta_iterations: 300
+            replay_beta_iterations: 100
             buffer_size: 8384
             dueling: True
             model: lstm

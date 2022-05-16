@@ -1,17 +1,25 @@
 """Simple Trainer that runs independent learners for each agent"""
+import numpy as np
+import torch
+
 from interactive_agents.envs import get_env_class
 from interactive_agents.training.learners import get_learner_class
 from interactive_agents.sampling import sample
 from interactive_agents.stopwatch import Stopwatch
 
-
 class IndependentTrainer:
 
-    def __init__(self, config):
+    def __init__(self, config, seed=0, device="cpu", verbose=False):
         self._eval_iterations = config.get("eval_iterations", 10)
         self._eval_episodes = config.get("eval_episodes", 32)
         self._iteration_episodes = config.get("iteration_episodes", 128)
         self._max_steps = config.get("max_steps", 100)
+        self._seed = seed
+        self._verbose = verbose
+
+        # Seed random number generators
+        np.random.seed(seed)
+        torch.manual_seed(seed)
 
         # Get environment class and config
         if "env" not in config:
@@ -39,7 +47,8 @@ class IndependentTrainer:
         # Initialize learners
         self._learners = {}
         for id in obs_spaces.keys():
-            self._learners[id] = learner_cls(obs_spaces[id], action_spaces[id], learner_config)
+            self._learners[id] = learner_cls(obs_spaces[id], 
+                action_spaces[id], learner_config, device)
 
         # Initialize training and eval policies
         self._training_policies = {}
@@ -65,20 +74,20 @@ class IndependentTrainer:
         # Update sampling policies
         for id, learner in self._learners.items():
             self._training_policies[id].update(learner.get_actor_update())
-
+        
         # Collect training batch and batch statistics
         sampling_time = self._sampling_timer.elapsed()
         self._sampling_timer.start()
         samples, sample_stats = sample(self._env, self._training_policies,
              self._iteration_episodes, self._max_steps)
         self._sampling_timer.stop()
-        sampling_time = self._sampling_timer.elapsed() - sampling_time
+        sampling_time = self._sampling_timer.elapsed() - sampling_time + 1e-6
 
         for key, value in sample_stats.items():
             stats["sampling/" + key] = value
 
         stats["sampling/episodes_per_s"] = sample_stats["episodes"] / sampling_time
-        stats["sampling/samples_per_s"] = sample_stats["samples"] / sampling_time
+        stats["sampling/timesteps_per_s"] = sample_stats["timesteps"] / sampling_time
 
         # Train learners on new training batch
         for id, episodes in samples.items():
@@ -88,6 +97,26 @@ class IndependentTrainer:
 
             for key, value in batch_stats.items():
                 stats[f"learning/{id}/{key}"] = value
+
+        # Accumulate global statistics
+        self._global_timer.stop()
+
+        self._episodes_total += sample_stats["episodes"]
+        self._timesteps_total += sample_stats["timesteps"]
+
+        stats["global/episodes_total"] = self._episodes_total
+        stats["global/timesteps_total"] = self._timesteps_total
+
+        stats["global/total_time_s"] = self._global_timer.elapsed()
+        stats["global/sampling_time_s"] = self._sampling_timer.elapsed()
+        stats["global/learning_time_s"] = self._learning_timer.elapsed()
+
+        # Print iteration stats
+        if self._verbose:
+            print(f"\n\nSEED {self._seed}, ITERATION {self._current_iteration}")
+            print(f"total episodes: {self._episodes_total}")
+            print(f"total timesteps: {self._timesteps_total}")
+            print(f"mean sampling reward: {stats['sampling/reward_mean']}")
 
         # Increment iteration
         self._current_iteration += 1
@@ -102,19 +131,6 @@ class IndependentTrainer:
 
             for key, value in eval_stats.items():
                 stats["eval/" + key] = value
-
-        # Return statistics
-        self._global_timer.stop()
-
-        self._episodes_total += sample_stats["episodes"]
-        self._timesteps_total += sample_stats["timesteps"]
-
-        stats["global/episodes_total"] = self._episodes_total
-        stats["global/timesteps_total"] = self._timesteps_total
-
-        stats["global/total_time_s"] = self._global_timer.elapsed()
-        stats["global/sampling_time_s"] = self._sampling_timer.elapsed()
-        stats["global/learning_time_s"] = self._learning_timer.elapsed()
 
         return stats
     
