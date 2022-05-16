@@ -22,7 +22,7 @@ def parse_args():
     parser = argparse.ArgumentParser("Identifies the best hyperparameters settings from a tuning sweep")
     
     parser.add_argument("path", type=str, help="path to directory containing training results")
-    parser.add_argument("-l", "--loss", type=str, default="sampling/mean_reward", 
+    parser.add_argument("-l", "--loss", type=str, default="sampling/reward_mean", 
         help="key of the metric to minimize (or maximize)")
     parser.add_argument("-a", "--accumulate", type=str, default="mean", 
         help="method for condensing time series into a scalar ['mean','max','min']")
@@ -47,18 +47,17 @@ def load_runs(path, loss, accumulate):
                     results = pandas.read_csv(results_file)
 
                     # Filter out empy data series
-                    if results.shape[0] > 0:
+                    if len(results.index) > 0:
                         result = results[loss]
 
-                        if results.shape[0] > 0 and not np.any(np.isnan(result)):
-                            if "max" == accumulate:
-                                value = np.max(result)
-                            elif "max" == accumulate:
-                                value = np.min(result)
-                            else:
-                                value = np.mean(result)
+                        if "max" == accumulate:
+                            value = np.nanmax(result)
+                        elif "max" == accumulate:
+                            value = np.nanmin(result)
+                        else:
+                            value = np.nanmean(result)
 
-                            runs.append(value)                        
+                        runs.append(value)                        
 
     return runs
 

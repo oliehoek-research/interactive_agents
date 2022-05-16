@@ -2,7 +2,7 @@
 """Simple script for launching experiments"""
 import argparse
 
-from interactive_agents.core import load_configs, run_experiments
+from interactive_agents.run import load_configs, run_experiments
 
 
 def parse_args():
@@ -14,6 +14,10 @@ def parse_args():
                         help="directory in which we should save results")
     parser.add_argument("-n", "--num-cpus", type=int, default=2,
                         help="the number of parallel worker processes to launch")
+    parser.add_argument("-g", "--gpu", action="store_true",
+                        help="enable GPU if available")
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print data for every training iteration")
 
     return parser.parse_args()
 
@@ -25,47 +29,52 @@ if __name__ == '__main__':
         experiments = load_configs(args.config_file)
     else:
         experiments = {
-            # "DQN_debug": {
             "R2D2_debug": {
-            # "other_play_debug": {
-            # "regret_game_debug": {
                 "stop": {
-                    "total_iterations": 100
+                    "iterations": 100
                 },
                 "trainer": "independent",
-                # "trainer": "regret_game",
-                "num_seeds": 2,
+                "num_seeds": 1,
                 "config": {
-                    "max_steps": 100,
-                    "iteration_episodes": 100,
-                    "eval_episodes": 10,
-                    "env": "coordination",
+                    "eval_iterations": 10,
+                    "eval_episodes": 32,
+                    "iteration_episodes": 32,
+                    "env": "memory",
                     "env_config": {
-                        "stages": 5,
-                        "actions": 4,
-                        "players": 2,
-                        "focal_point": False,
-                        "other_play": False,
+                        "length": 10,
+                        "num_cues": 4,
+                        "noise": 0.1,
                     },
-                    "learner_id": 0,
-                    "partner_id": 1,
-                    # "learner": "DQN",
                     "learner": "R2D2",
                     "learner_config": {
-                        "batch_size": 4,
-                        "batches_per_episode": 1,
-                        "sync_interval": 100,
-                        "epsilon": 0.05,
+                        "num_batches": 16,
+                        "batch_size": 16,
+                        "sync_iterations": 5,
+                        "learning_starts": 10,
                         "gamma": 0.99,
                         "beta": 0.5,
-                        "hiddens": [64],
+                        "double_q": True,
+                        "epsilon_initial": 0.5,
+                        "epsilon_iterations": 100,
+                        "epsilon_final": 0.01,
+                        "replay_alpha": 0.0,
+                        "replay_epsilon": 0.01,
+                        "replay_eta": 0.5,
+                        "replay_beta_iterations": 100,
+                        "buffer_size": 2048,
                         "dueling": True,
-                        "compile": True,
-                        "buffer_size": 1024,
-                        "lr": 0.01,
+                        "model": "lstm",
+                        "model_config": {
+                            "hidden_size": 64,
+                            "hidden_layers": 1,
+                        },
+                        "lr": 0.001,
                     },
                 }
             }
         }
 
-    run_experiments(experiments, args.output_path, args.num_cpus)
+    device = "cuda" if args.gpu else "cpu"
+    print(f"Training with Torch device '{device}'")
+
+    run_experiments(experiments, args.output_path, args.num_cpus, device, args.verbose)

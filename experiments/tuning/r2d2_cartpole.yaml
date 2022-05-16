@@ -1,10 +1,10 @@
-r2d2_cartpole:
+r2d2_cartpole_tune:
   stop:
     total_iterations: 100
   trainer: independent
-  num_seeds: 1
+  num_seeds: 2
   config:
-    max_steps: 100
+    max_steps: 200
     iteration_episodes: 100
     eval_episodes: 10
     env: gym
@@ -15,11 +15,13 @@ r2d2_cartpole:
       batch_size: 8
       batches_per_episode: 0.5
       sync_interval: 100
-      epsilon: 0.01
+      epsilon: 
+        grid_search: [0.01, 0.05]
       gamma: 0.99
       beta: 0.5
-      lr: 0.01
+      lr:
+        grid_search: [0.001, 0.01, 0.1]
       hidden_size: 32
       hidden_layers: 1
       dueling: True
-      buffer_size: 2048
+      buffer_size: 1024
