@@ -115,7 +115,7 @@ def load_populations(path, policy_map):
         env = env_cls(env_config, spec_only=True)
 
         map = {}
-        for policy_id in env.observation_space.keys():
+        for policy_id in env.observation_spaces.keys():
             map[policy_id] = policy_id
     else:
         map = {}
@@ -200,7 +200,7 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
     env_cls = get_env_class(env_name)
     env = env_cls(env_config, spec_only=True)
 
-    agent_ids = list(env.observation_space.keys())
+    agent_ids = list(env.observation_spaces.keys())
     population_ids = list(populations.keys())
 
     num_agents = len(agent_ids)
@@ -231,7 +231,7 @@ def cross_evaluate(populations, config, num_cpus, num_episodes):
     returns = np.zeros(tuple([num_populations] * num_agents))
     for idx, thread in threads.items():
         stats = thread.get()
-        returns[idx] = stats["mean_reward"]
+        returns[idx] = stats["reward_mean"]
 
     return returns
 
