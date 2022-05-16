@@ -1,7 +1,5 @@
 from gym.spaces import Discrete, Box
 import numpy as np
-import pyglet
-from pyglet.gl import *
 
 from .common import MultiagentEnv
 
@@ -157,6 +155,8 @@ class CoordinationGame(MultiagentEnv):
                   max_width=1600,
                   **kwargs):
         # NOTE: There is a bug in VcXsrv with WSL that causes problems if we move the window
+        import pyglet
+        from pyglet.gl import Config
 
         # TODO: Implement recording functionality
         if record_path is not None:

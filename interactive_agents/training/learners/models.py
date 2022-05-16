@@ -131,7 +131,8 @@ class DenseNet(nn.Module):
 
     def forward(self, 
             input: torch.Tensor, 
-            state: Optional[torch.Tensor]) -> Tuple[torch.Tensor, Optional[torch.Tensor]]:
+            state: Tuple[torch.Tensor, torch.Tensor]) \
+                -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
         if self._conv is not None:
             base_shape = list(input.shape)
@@ -142,8 +143,11 @@ class DenseNet(nn.Module):
         return self._features(input), state
 
     @torch.jit.export
-    def initial_state(self, batch_size: int=1, device: str="cpu") -> None:
-        return None
+    def initial_state(self, batch_size: int=1, device: str="cpu") -> Tuple[torch.Tensor, torch.Tensor]:
+        hidden = torch.zeros((1,), dtype=torch.float32, device=device)
+        cell = torch.zeros((1,), dtype=torch.float32, device=device)
+        
+        return hidden, cell
 
 
 class LSTMNet(nn.Module):
@@ -170,24 +174,25 @@ class LSTMNet(nn.Module):
 
     def forward(self, 
             input: torch.Tensor, 
-            state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            state: Tuple[torch.Tensor, torch.Tensor]) \
+                -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
         
         if self._conv is not None:
             base_shape = list(input.shape)
             input = input.reshape([base_shape[0] * base_shape[1]] + base_shape[2:])
             input = self._conv(input)
             input = input.reshape((base_shape[0], base_shape[1], -1))
-        
-        hidden, cell = torch.split(state, self._hidden_size, dim=-1)
-        features, (hidden, cell) = self._lstm(input, (hidden, cell))
-        return self._output(features), torch.cat((hidden, cell), dim=-1)
+
+        features, state = self._lstm(input, state)
+        return self._output(features), state
 
     @torch.jit.export
-    def initial_state(self, batch_size: int=1, device: str="cpu") -> torch.Tensor:
-        shape = [self._hidden_layers, batch_size, self._hidden_size * 2]  # NOTE: Shape must be a list for TorchScript serialization to work
-        state = torch.zeros(shape, dtype=torch.float32)
-        
-        return state.to(device)
+    def initial_state(self, batch_size: int=1, device: str="cpu") -> Tuple[torch.Tensor, torch.Tensor]:
+        shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
+        hidden = torch.zeros(shape, dtype=torch.float32, device=device)
+        cell = torch.zeros(shape, dtype=torch.float32, device=device)
+
+        return hidden, cell
 
 
 class GRUNet(nn.Module):
@@ -214,7 +219,8 @@ class GRUNet(nn.Module):
 
     def forward(self, 
             input: torch.Tensor, 
-            state: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor]:
+            state: Tuple[torch.Tensor, torch.Tensor]) \
+                -> Tuple[torch.Tensor, Tuple[torch.Tensor, torch.Tensor]]:
 
         if self._conv is not None:
             base_shape = list(input.shape)
@@ -222,15 +228,17 @@ class GRUNet(nn.Module):
             input = self._conv(input)
             input = input.reshape((base_shape[0], base_shape[1], -1))
         
-        features, state = self._gru(input, state)
-        return self._output(features), state
+        hidden, cell = state
+        features, hidden = self._gru(input, hidden)
+        return self._output(features), (hidden, cell)
 
     @torch.jit.export
-    def initial_state(self, batch_size: int=1, device: str="cpu") -> torch.Tensor:
+    def initial_state(self, batch_size: int=1, device: str="cpu") -> Tuple[torch.Tensor, torch.Tensor]:
         shape = [self._hidden_layers, batch_size, self._hidden_size]  # NOTE: Shape must be a list for TorchScript serialization to work
-        cell = torch.zeros(shape, dtype=torch.float32)
+        hidden = torch.zeros(shape, dtype=torch.float32, device=device)
+        cell = torch.zeros((1,), dtype=torch.float32, device=device)
         
-        return cell.to(device)
+        return hidden, cell
 
 
 # UNIT TESTS

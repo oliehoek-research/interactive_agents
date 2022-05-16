@@ -47,5 +47,5 @@ class MemoryGame(MultiagentEnv):  # TODO: What do they call this in the BSuite p
             self._current_step += 1
             return self._obs(), {self._agent_id: 0}, {self._agent_id: False}, None
         else:
-            reward = (1 if action == self._current_cue else 0)
+            reward = (1 if action[self._agent_id] == self._current_cue else 0)
             return self._obs(), {self._agent_id: reward}, {self._agent_id: True}, None
