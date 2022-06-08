@@ -31,13 +31,40 @@ def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
 
 
+def get_stop_conditions(stop):
+    max_iterations = stop.pop("iterations", np.infty)
+    
+    # Flatten termination conditions
+    def flatten(d):
+        flattened = {}
+        for key, value in d.items():
+            if isinstance(value, dict):
+                value = flatten(value)
+
+                for sub_key, sub_value in value.item():
+                    flattened[key + "/" + sub_key] = sub_value
+            else:
+                flattened[key] = value
+        
+        return flattened
+    
+    termination = flatten(stop)
+
+    # Add top-level keys to the "global" namespace
+    for key, value in stop.items():
+        if not isinstance(value, (dict, list)):
+            termination["global/" + key] = value
+
+    return max_iterations, termination
+
+
 def run_trail(base_path, config, seed, device, verbose):
     path = os.path.join(base_path, f"seed_{seed}")  
     os.makedirs(path)
 
-    # Get termination conditions
+    # Extract termination conditions
     stop = config.pop("stop", {})
-    max_iterations = stop.pop("iterations", np.infty)
+    max_iterations, stop = get_stop_conditions(stop)
 
     # Build trainer
     trainer_cls = get_trainer_class(config.get("trainer", "independent"))

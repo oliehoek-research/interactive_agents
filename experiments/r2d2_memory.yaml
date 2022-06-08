@@ -1,18 +1,18 @@
 r2d2_memory:
   stop:
-    total_iterations: 300
+    iterations: 300
   trainer: independent
-  num_seeds: 5
+  num_seeds: 4
   config:
     max_steps: 500
     iteration_episodes: 100
     eval_episodes: 10
     env: memory
     env_config:
-      length:
-        grid_search: [5, 10, 20]
-      num_cues:
-        grid_search: [5, 10]
+      length: 5
+        # grid_search: [5, 10, 20]
+      num_cues: 5
+        # grid_search: [5, 10]
     learner: R2D2
     learner_config:
       batch_size: 8
