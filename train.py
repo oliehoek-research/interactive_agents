@@ -9,7 +9,7 @@ def parse_args():
     parser = argparse.ArgumentParser("Training script for finite, constant-sum extensive-form games")
 
     parser.add_argument("-f", "--config-file", default=None, type=str, action="append",
-                        help="If specified, use config options from this file.")
+                        help="if specified, use config options from this file.")
     parser.add_argument("-o", "--output-path", type=str, default="results/debug",
                         help="directory in which we should save results")
     parser.add_argument("-n", "--num-cpus", type=int, default=2,
@@ -18,6 +18,10 @@ def parse_args():
                         help="enable GPU if available")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print data for every training iteration")
+    parser.add_argument("--num-seeds", type=int,
+                        help="the number of random seeds to run, overrides values from the config file")
+    parser.add_argument("--seeds", type=int, nargs="+",
+                        help="the list of random seeds to run, overrides values from the config file")
 
     return parser.parse_args()
 
@@ -77,4 +81,5 @@ if __name__ == '__main__':
     device = "cuda" if args.gpu else "cpu"
     print(f"Training with Torch device '{device}'")
 
-    run_experiments(experiments, args.output_path, args.num_cpus, device, args.verbose)
+    run_experiments(experiments, args.output_path, 
+        args.num_cpus, device, args.verbose, args.num_seeds, args.seeds)

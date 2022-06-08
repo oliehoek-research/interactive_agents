@@ -148,7 +148,13 @@ def launch_experiment(path, name, config, pool, device, verbose):
     return trials
 
 
-def run_experiments(experiments, base_path, num_cpus=1, device="cpu", verbose=False):
+def run_experiments(experiments, 
+                    base_path, 
+                    num_cpus=1,
+                    device="cpu", 
+                    verbose=False, 
+                    num_seeds=None, 
+                    seeds=None):
 
     # Limit CPU paralellism globally
     torch.set_num_threads(num_cpus)
@@ -160,6 +166,14 @@ def run_experiments(experiments, base_path, num_cpus=1, device="cpu", verbose=Fa
     trials = []
 
     for name, config in experiments.items():
+        
+        # Override seeds with provided seeds
+        if num_seeds is not None:
+            config["num_seeds"] = num_seeds
+        if seeds is not None:
+            config["seeds"] = seeds
+
+        # Get grid-search variations of config (for hyperparameter tuning)
         variations = grid_search(name, config)
 
         if variations is None:

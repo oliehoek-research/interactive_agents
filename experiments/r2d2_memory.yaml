@@ -1,6 +1,7 @@
 r2d2_memory:
   stop:
-    iterations: 300
+    # iterations: 300
+    episodes_total: 30000
   trainer: independent
   num_seeds: 4
   config:
