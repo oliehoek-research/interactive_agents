@@ -22,7 +22,7 @@ def parse_args():
     parser = argparse.ArgumentParser("Identifies the best hyperparameters settings from a tuning sweep")
     
     parser.add_argument("path", type=str, help="path to directory containing training results")
-    parser.add_argument("-l", "--loss", type=str, default="sampling/reward_mean", 
+    parser.add_argument("-l", "--loss", type=str, default="eval/reward_mean", 
         help="key of the metric to minimize (or maximize)")
     parser.add_argument("-a", "--accumulate", type=str, default="mean", 
         help="method for condensing time series into a scalar ['mean','max','min']")
