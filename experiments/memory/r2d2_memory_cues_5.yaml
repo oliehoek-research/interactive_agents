@@ -1,0 +1,38 @@
+r2d2_memory_cues_5:
+  stop:
+    iterations: 500
+  trainer: independent
+  num_seeds: 5
+  config:
+    max_steps: 500
+    iteration_episodes: 32
+    eval_episodes: 8
+    env: memory
+    env_config:
+      length:
+        grid_search: [20, 40, 80]
+      num_cues: 5
+    learner: R2D2
+    learner_config:
+      lr: 0.001
+      dueling: True
+      num_batches: 16
+      batch_size: 8
+      sync_iterations: 20
+      learning_starts: 10
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 500
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.5
+      replay_beta_iterations: 500
+      buffer_size: 4096
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 64
+        hidden_layers: 1
