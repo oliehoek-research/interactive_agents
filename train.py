@@ -22,7 +22,8 @@ def parse_args():
                         help="the number of random seeds to run, overrides values from the config file")
     parser.add_argument("--seeds", type=int, nargs="+",
                         help="the list of random seeds to run, overrides values from the config file")
-
+    parser.add_argument("-t", "--triton", action="store_true",
+                        help="the training is done in triton. changes the train and run behaviour!!!")
     return parser.parse_args()
 
 
@@ -81,5 +82,11 @@ if __name__ == '__main__':
     device = "cuda" if args.gpu else "cpu"
     print(f"Training with Torch device '{device}'")
 
-    run_experiments(experiments, args.output_path, 
+    if args.triton is True:
+        print("Experiments are running on Triton.")
+        run_experiments_triton(experiments, args.output_path, 
+            args.num_cpus, device, args.verbose, args.num_seeds, args.seeds)
+    else:
+        print("Experiments NOT running on triton. Use --triton if you want to run on triton!")
+        run_experiments(experiments, args.output_path, 
         args.num_cpus, device, args.verbose, args.num_seeds, args.seeds)
