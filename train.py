@@ -2,7 +2,7 @@
 """Simple script for launching experiments"""
 import argparse
 
-from interactive_agents.run import load_configs, run_experiments
+from interactive_agents.run import load_configs, run_experiments, run_experiments_triton
 
 
 def parse_args():
