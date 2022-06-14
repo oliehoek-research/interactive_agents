@@ -2,6 +2,10 @@
 '''Implements grid-search over training configurations'''
 from collections import namedtuple
 from copy import deepcopy
+import interactive_agents.run as rr
+import os
+import os.path
+import yaml
 
 Parameter = namedtuple("Parameter", ["key", "value"])
 
@@ -78,7 +82,48 @@ def get_variations(base_name, base_config, free_parameters, set_parameters=[]):
 
         return variations
 
+def save_variations(base_name, base_config, free_parameters, set_parameters=[]):
+    '''Takes a list of tunable parameters and generates a list of configurations'''
 
+    path = rr.make_or_use_dir("./experiments", base_name)
+
+    if len(free_parameters) == 0:
+        name = []
+
+        for param in set_parameters:
+            value = param.value
+            if isinstance(value, dict):
+                value = serialize_dict(value)
+            name.append(f"{param.key[-1]}={value}")
+
+        name = ','.join(name)
+        name = f"{base_name}_{name}"
+
+        config = deepcopy(base_config)
+
+        for p in set_parameters:
+            set_recursive(config, p.key, p.value)
+
+        return {name: config}
+    else:
+        variations = {}
+
+        for value in free_parameters[0].value:
+            parameter = Parameter(free_parameters[0].key, value)
+            variations.update(save_variations(base_name, 
+                                             base_config, 
+                                             free_parameters=free_parameters[1:],
+                                             set_parameters=set_parameters + [parameter]))
+
+        for variation_name, config in variations.items():   
+            variation_name = variation_name.replace("=", "").replace("," , "_")
+            variation_config_file = os.path.join(path,"config_{}.yaml".format(variation_name))
+            
+            with open(variation_config_file, 'w') as config_file:
+                yaml.dump({variation_name: config}, config_file)
+
+        return variations
+                                     
 def grid_search(name, config):
     parameters = get_parameters(config)
 
@@ -87,3 +132,9 @@ def grid_search(name, config):
     else:
         parameters.sort(key=lambda param: param.key[-1])
         return get_variations(name, config, parameters)
+
+def generate_config_files(name, config):
+    parameters = get_parameters(config)
+    assert len(parameters) != 0, "There must be tunable parameters for generating config files!"
+    parameters.sort(key=lambda param: param.key[-1])
+    return save_variations(name, config, parameters)
