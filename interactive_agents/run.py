@@ -26,6 +26,11 @@ def make_unique_dir(path, tag):
     os.makedirs(sub_path)
     return sub_path
 
+def make_or_use_dir(path, tag):
+    sub_path = os.path.join(path, tag)
+    if not os.path.exists(sub_path):
+        os.makedirs(sub_path)
+    return sub_path
 
 def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
@@ -147,6 +152,42 @@ def launch_experiment(path, name, config, pool, device, verbose):
     
     return trials
 
+def launch_experiment_triton(path, name, config, pool, device, verbose):
+    path = make_or_use_dir(path, name)
+
+    # Save experiment configuration
+    config_file_path = os.path.join(path, "config.yaml")
+    if not os.path.isfile(config_file_path):
+        with open(config_file_path, 'w') as config_file:
+            yaml.dump({name: config}, config_file)
+
+    # Save experiment metadata
+    metadata = {
+        "timestamp": datetime.utcnow().isoformat()
+    }
+
+    # Get random seeds
+    num_seeds = config.get("num_seeds", 1)
+    seeds = config.get("seeds", list(range(num_seeds)))
+
+    try:
+        repo = Repo(search_parent_directories=True)
+        metadata["git_commit"] = str(repo.active_branch.commit)
+    except:
+        print("NOTICE: Could not determine current git commit")
+
+    with open(os.path.join(path, "metadata_s{}.yaml".format(seeds)), 'w') as metadata_file:
+        yaml.dump(metadata, metadata_file)
+
+
+    # Launch trials
+    trials = []
+    for seed in seeds:
+        print(f"launching: {name} - seed: {seed}")
+        trials.append(pool.apply_async(run_trail, 
+            (path, config, seed, device, verbose), error_callback=print_error))
+    
+    return trials
 
 def run_experiments(experiments, 
                     base_path, 
@@ -188,6 +229,32 @@ def run_experiments(experiments,
             for var_name, var_config in variations.items():
                 trials += launch_experiment(exp_path, var_name, var_config, pool, device, verbose)
 
+    # Wait for trails to complete before returning
+    for trial in trials:
+        trial.wait()
+
+def run_experiments_triton(experiments, 
+                    base_path, 
+                    num_cpus=1,
+                    device="cpu", 
+                    verbose=False, 
+                    num_seeds=None, 
+                    seeds=None):
+
+    assert seeds is not None, "The triton experiment must run with a seed specified."
+    # Limit CPU paralellism globally
+    torch.set_num_threads(num_cpus)
+
+    # Uses the built-in multiprocessing pool to schedule experiments
+    pool = Pool(num_cpus)
+
+    # Generate hyperparameter variations and queue all trials
+    trials = []
+
+    for name, config in experiments.items():
+        config["seeds"] = seeds
+        trials += launch_experiment_triton(base_path, name, config, pool, device, verbose)
+        
     # Wait for trails to complete before returning
     for trial in trials:
         trial.wait()
