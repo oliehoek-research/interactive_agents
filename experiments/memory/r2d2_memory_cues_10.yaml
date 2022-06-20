@@ -9,8 +9,9 @@ r2d2_memory_cues_10:
     eval_episodes: 8
     env: memory
     env_config:
-      length: 20
+      length: 40
       num_cues: 10
+      noise: 0.0
     learner: R2D2
     learner_config:
       lr: 0.001
@@ -25,8 +26,8 @@ r2d2_memory_cues_10:
       epsilon_initial: 0.5
       epsilon_iterations: 3500
       epsilon_final: 0.01
-      replay_alpha: 
-        grid_search: [0.0, 0.6]
+      replay_alpha:
+        grid_search: [0.6, 0.0]
       replay_epsilon: 0.01
       replay_eta: 0.5
       replay_beta_iterations: 3000

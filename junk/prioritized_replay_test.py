@@ -349,7 +349,8 @@ class R2D2:
         self._replay_eta = config.get("replay_eta", 0.5)
         self._replay_beta = 0.0
         self._replay_beta_step = 1.0 / config.get("replay_beta_iterations", 1000)
-        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048), 0.0 != self._replay_alpha)
+        self._replay_buffer = ReplayBuffer(config.get("buffer_size", 2048), 
+            0.0 != self._replay_alpha, device)
 
         # Q-Networks
         net_cls = GRUNet if config.get("model", "lstm") == "gru" else LSTMNet
@@ -386,7 +387,9 @@ class R2D2:
     def _q_values(self, obs, state):
         obs = torch.as_tensor(obs, dtype=torch.float32, device=self._device)
         q_values, state = self._online_network(obs.reshape(self._input_shape), state)
-        return q_values.detach().reshape([-1]).numpy(), state
+        q_values = q_values.detach().reshape([-1])
+
+        return q_values.cpu().numpy(), state
     
     def _priority(self, td_errors):
         abs_td = np.abs(td_errors)
@@ -399,10 +402,10 @@ class R2D2:
     def _loss(self, batch, weights, seq_lens):
         h0 = self._initial_state(len(weights))
 
-        mask = [torch.ones(l) for l in seq_lens]
+        mask = [torch.ones(l, device=self._device) for l in seq_lens]
         mask = nn.utils.rnn.pad_sequence(mask)
 
-        weights = torch.as_tensor(weights, dtype=torch.float32)
+        weights = torch.as_tensor(weights, dtype=torch.float32, device=self._device)
 
         online_q, _ = self._online_network(batch[OBS], h0)
         target_q, _ = self._target_network(batch[NEXT_OBS], h0)
@@ -511,9 +514,9 @@ class R2D2:
             loss.backward()
             self._optimizer.step()
 
-            td_errors = td_errors.detach().numpy()
+            td_errors = td_errors.detach().cpu().numpy()
             outputs["td_error"].append(td_errors)
-            outputs["loss"].append(loss.detach().numpy())
+            outputs["loss"].append(loss.detach().cpu().numpy())
 
             # Update replay priorities
             priorities = self._priority(td_errors)
@@ -680,7 +683,7 @@ def parse_args():
 
     parser.add_argument("-f", "--config-file", type=str, default=None,
                         help="If specified, use config options from this file")
-    parser.add_argument("-o", "--output-path", type=str, default="results/debug/R2D2",
+    parser.add_argument("-o", "--output-path", type=str, default="results/debug/R2D2_benchmark",
                         help="directory in which we should save results")
     parser.add_argument("-i", "--iterations", type=int, default=1000,
                         help="number of training iterations to run experiment for")
@@ -706,7 +709,7 @@ if __name__ == "__main__":
             "env": {
                 "length": 20,
                 "num_cues": 10,
-                "noise": 0.1,
+                "noise": 0.0,
                 "image": False,
             },
             "eval_iterations": 10,
@@ -759,7 +762,7 @@ if __name__ == "__main__":
     env = MemoryGame(config.get("env", {}))
 
     # Initialize R2D2
-    learner = R2D2(env, config)  # NOTE: Could initialize environment within learner
+    learner = R2D2(env, config, device)
 
      # Start TensorboardX
     with SummaryWriter(path) as writer:
