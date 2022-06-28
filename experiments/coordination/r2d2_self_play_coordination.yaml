@@ -1,6 +1,6 @@
 r2d2_self_play_coordination:
   stop:
-    total_iterations: 600
+    total_iterations: 1000
   trainer: self_play
   num_seeds: 10
   config:
@@ -17,14 +17,25 @@ r2d2_self_play_coordination:
       players: 2
     learner: R2D2
     learner_config:
-      batch_size: 8
-      batches_per_episode: 1.0
-      sync_interval: 100
-      epsilon: 0.1
+      lr: 0.001
+      dueling: True
+      num_batches: 32
+      batch_size: 32
+      sync_iterations: 20
+      learning_starts: 50
       gamma: 0.99
       beta: 0.5
-      lr: 0.01
-      hidden_size: 32
-      hidden_layers: 1
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 750
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.5
+      replay_beta_iterations: 750
+      buffer_size: 8192
       dueling: True
-      buffer_size: 1024
+      model: lstm
+      model_config:
+        hidden_size: 64
+        hidden_layers: 1
