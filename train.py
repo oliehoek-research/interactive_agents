@@ -12,7 +12,7 @@ def parse_args():
                         help="if specified, use config options from this file.")
     parser.add_argument("-o", "--output-path", type=str, default="results/debug",
                         help="directory in which we should save results")
-    parser.add_argument("-n", "--num-cpus", type=int, default=2,
+    parser.add_argument("-n", "--num-cpus", type=int, default=1,
                         help="the number of parallel worker processes to launch")
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="enable GPU if available")
