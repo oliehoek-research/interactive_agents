@@ -23,10 +23,12 @@ class CoordinationGame(MultiagentEnv):
 
         self._obs_size = self._num_actions * (self._num_players - 1)
 
+        self._pids = [f"agent_{pid}" for pid in range(self._num_players)]
+
         self.observation_spaces = {}
         self.action_spaces = {}
 
-        for pid in range(self._num_players):
+        for pid in self._pids:
             self.observation_spaces[pid] = Box(0, 1, shape=(self._obs_size,))
             self.action_spaces[pid] = Discrete(self._num_actions)
         
@@ -45,8 +47,8 @@ class CoordinationGame(MultiagentEnv):
         self._forward_permutations = {}
         self._backward_permutations = {}
         
-        for pid in range(self._num_players):
-            if 0 == pid:
+        for policy_idx, pid in enumerate(self._pids):
+            if 0 == policy_idx:
                 forward = np.arange(self._num_actions)
             elif self._focal_point:
                 forward = 1 + np.random.permutation(self._num_actions - 1)
@@ -63,7 +65,7 @@ class CoordinationGame(MultiagentEnv):
     
     def _permuted_obs(self, actions):
         obs = {}
-        for pid in range(self._num_players):
+        for pid in self._pids:
             obs[pid] = np.zeros(self._obs_size)
             index = 0
 
@@ -77,11 +79,11 @@ class CoordinationGame(MultiagentEnv):
 
     def _obs(self, actions=None):
         obs = {}
-        for pid in range(self._num_players):
+        for pid in self._pids:
             obs[pid] = np.zeros(self._obs_size)
 
         if actions is not None:
-            for pid in range(self._num_players):
+            for pid in self._pids:
                 index = 0
 
                 for id, action in actions.items():
@@ -107,15 +109,15 @@ class CoordinationGame(MultiagentEnv):
         else:
             reward = 0 + noise
 
-        rewards = {pid:reward for pid in range(self._num_players)}
+        rewards = {pid:reward for pid in self._pids}
 
         # Determine if final stage reached
         self._current_stage += 1
         done = self._num_stages <= self._current_stage
-        dones = {pid:done for pid in range(self._num_players)}
+        dones = {pid:done for pid in self._pids}
 
         # Save previous actions for rendering
-        prev_actions = [actions[pid] for pid in range(self._num_players)]  # TODO: Change IDs to strings
+        prev_actions = [actions[pid] for pid in self._pids]
         self._prev.append((prev_actions, reward))
 
         return rewards, dones
@@ -132,7 +134,7 @@ class CoordinationGame(MultiagentEnv):
     def step(self, actions):  # NOTE: This wrapper for the step function just handles the other-play permutations
         true_actions = actions.copy()  # NOTE: The action array will be used for learning, so don't modify it
         if self._other_play:
-            for pid in range(self._num_players):
+            for pid in self._pids:
                 true_actions[pid] = self._forward_permutations[pid][actions[pid]]
 
             obs = self._permuted_obs(true_actions)
