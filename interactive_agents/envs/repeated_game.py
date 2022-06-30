@@ -28,12 +28,12 @@ class RepeatedGame:
         assert self._row_payoffs.shape == self._column_payoffs.shape, "row and column payoff matrices must be same size"
         
         self.observation_spaces = {
-            0: Box(0, 1, self._row_payoffs.shape[1]), 
-            1: Box(0, 1, self._row_payoffs.shape[0])
+            "row": Box(0, 1, self._row_payoffs.shape[1]), 
+            "column": Box(0, 1, self._row_payoffs.shape[0])
         }
         self.action_spaces = {
-            0: Discrete(self._row_payoffs.shape[0]), 
-            1: Discrete(self._row_payoffs.shape[1])
+            "row": Discrete(self._row_payoffs.shape[0]), 
+            "column": Discrete(self._row_payoffs.shape[1])
         }
 
         self._num_stages = config.get("stages", 5)
@@ -42,25 +42,25 @@ class RepeatedGame:
     def reset(self):
         self._current_stage = 0
         return {
-            0: np.zeros(self.observation_space[0].shape), 
-            1: np.zeros(self.observation_space[1].shape)
+            "row": np.zeros(self.observation_space["row"].shape), 
+            "column": np.zeros(self.observation_space["column"].shape)
         }
     
     def step(self, action):
         obs = {
-            0: np.zeros(self.observation_space[0].shape), 
-            1: np.zeros(self.observation_space[1].shape)
+            "row": np.zeros(self.observation_space["row"].shape), 
+            "column": np.zeros(self.observation_space["column"].shape)
         }
-        obs[0][action[1]] = 1
-        obs[1][action[0]] = 1
+        obs["row"][action["column"]] = 1
+        obs["column"][action["row"]] = 1
 
         rewards = {
-            0: self._row_payoffs[action[0], action[1]],
-            1: self._column_payoffs[action[0], action[1]]
+            "row": self._row_payoffs[action["row"], action["column"]],
+            "column": self._column_payoffs[action["row"], action["column"]]
         }
 
         self._current_stage += 1
         done = self._num_stage <= self._current_stage
-        dones = {0: done, 1: done}
+        dones = {"row": done, "column": done}
 
         return obs, rewards, dones, None

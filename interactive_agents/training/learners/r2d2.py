@@ -11,10 +11,6 @@ from interactive_agents.training.learners.models import build_model
 from interactive_agents.training.learners.priority_tree import PriorityTree
 from interactive_agents.sampling import Batch
 
-# TODO: Remove these when we move the unit tests
-import os.path
-from gym.spaces import Box, Discrete
-
 class QNetwork(nn.Module):
     """Feature layers defined by the config dict. Supports dueling networks."""
 
@@ -66,60 +62,6 @@ class QPolicy(nn.Module):
     @torch.jit.export
     def initial_state(self, batch_size: int=1, device: str="cpu"):
         return self._model.initial_state(batch_size, device)
-
-
-# TODO: Move these unit tests to a separate file
-def serialization_cycle(model, data, output_shape, tmp_path):
-    path = os.path.join(tmp_path, "model.pt")
-    model = torch.jit.script(model)
-    hidden = model.initial_state(batch_size=data.shape[1])
-
-    target, _ = model(data, hidden)
-    assert tuple(target.shape) == tuple(output_shape)
-
-    torch.jit.save(model, path)
-    model = torch.jit.load(path)
-    hidden = model.initial_state(batch_size=data.shape[1])
-
-    output, _ = model(data, hidden)
-    assert torch.equal(target, output)
-
-
-def test_q_net(tmp_path):
-    obs_space = Box(0,1,(10,))
-    action_space = Discrete(5)
-
-    data = torch.ones([20, 2] + list(obs_space.shape))
-    q_shape = (20, 2, action_space.n)
-    action_shape = (20, 2)
-
-    q_network = QNetwork(obs_space, action_space, {
-        "model": "dense",
-        "hidden_layers": 1,
-        "hidden_size": 32,
-    }, dueling=True)
-    serialization_cycle(q_network, data, q_shape, tmp_path)
-    policy = QPolicy(q_network)
-    serialization_cycle(policy, data, action_shape, tmp_path)
-
-
-    q_network = QNetwork(obs_space, action_space, {
-        "model": "lstm",
-        "hidden_layers": 1,
-        "hidden_size": 32,
-    }, dueling=True)
-    serialization_cycle(q_network, data, q_shape, tmp_path)
-    policy = QPolicy(q_network)
-    serialization_cycle(policy, data, action_shape, tmp_path)
-
-    q_network = QNetwork(obs_space, action_space, {
-        "model": "gru",
-        "hidden_layers": 1,
-        "hidden_size": 32,
-    }, dueling=True)
-    serialization_cycle(q_network, data, q_shape, tmp_path)
-    policy = QPolicy(q_network)
-    serialization_cycle(policy, data, action_shape, tmp_path)
 
 
 class RecurrentReplayBuffer:

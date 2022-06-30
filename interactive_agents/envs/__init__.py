@@ -1,3 +1,5 @@
+from .common import MultiagentEnv
+
 def get_coordination_game():
     from interactive_agents.envs.coordination import CoordinationGame
     return CoordinationGame
@@ -36,7 +38,6 @@ ENVS = {
     "repeated": get_repeated_game,
     "mpe": get_pettingzoo_mpe,
 }
-
 
 def get_env_class(name):
     if name not in ENVS:

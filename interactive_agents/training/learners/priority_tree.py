@@ -66,30 +66,3 @@ class PriorityTree:
                 idx = next_idx + 1
         
         return idx - self._capacity
-
-
-# UNIT TESTS
-def test_priority_tree():
-    tree = PriorityTree(7)
-    assert tree._capacity == 8
-
-    tree.set([0], [1])
-    assert tree.min() == 1
-    assert tree.sum() == 1
-    assert tree.prefix_index(0.5) == 0
-
-    tree.set([0, 2, 3, 4], [2, 1, 4, 3])
-    assert tree.min() == 1
-    assert tree.sum() == 10
-    assert tree.prefix_index(1) == 0
-    assert tree.prefix_index(2) == 2
-    assert tree.prefix_index(6) == 3
-    assert tree.prefix_index(11) == 7
-
-    tree.set([1, 5, 6, 7], [.5, 2, 1, 3])
-    assert tree.min() == .5
-    assert tree.sum() == 16.5
-    assert tree.prefix_index(1) == 0
-    assert tree.prefix_index(7) == 3
-    assert tree.prefix_index(13) == 6
-    assert tree.prefix_index(20) == 7
