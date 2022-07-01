@@ -49,9 +49,9 @@ class SelfPlayTrainer:
         self._eval_env = env_cls(env_eval_config, spec_only=False)
 
         # Initialize learning agents
-        if "base_learner" in config:
-            base_cls = get_learner_class(config["base_learner"])
-            base_config = config.get("base_config", {})
+        if "learner" in config:
+            base_cls = get_learner_class(config["learner"])
+            base_config = config.get("learner_config", {})
         else:
             base_cls = None
             base_config = None
@@ -137,7 +137,7 @@ class SelfPlayTrainer:
 
         # Update sampling policies
         for id, learner in self._learners.items():
-            self._training_policies[id].update(learner.get_update())
+            self._training_policies[id].update(learner.get_actor_update())
 
         # Collect training batch and batch statistics
         sampling_time = self._sampling_timer.elapsed()
@@ -147,7 +147,7 @@ class SelfPlayTrainer:
             training_batch = sample(self._env, self._training_policies,
                 self._iteration_episodes, self._max_steps)
         else:
-            training_batch = self._sample_checkpoints(self._round)
+            training_batch = self._sample_checkpoints()
         
         self._sampling_timer.stop()
         sampling_time = self._sampling_timer.elapsed() - sampling_time + 1e-6
@@ -181,7 +181,7 @@ class SelfPlayTrainer:
         # Do evaluation if needed (update eval policies first)
         if self._current_iteration % self._eval_iterations == 0:
             for id, learner in self._learners.items():
-                self._eval_policies[id].update(learner.get_update(eval=True))
+                self._eval_policies[id].update(learner.get_actor_update(eval=True))
 
             eval_batch = sample(self._eval_env, 
                 self._eval_policies, self._eval_episodes, self._max_steps)

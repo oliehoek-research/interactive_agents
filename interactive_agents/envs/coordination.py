@@ -104,7 +104,7 @@ class CoordinationGame(MultiagentEnv):
         # Compute global reward
         if self._focal_point and all(a == 0 for a in actions.values()):
             reward = self._focal_payoff
-        elif all(a == actions[0] for a in actions.values()):
+        elif all(a == actions["agent_0"] for a in actions.values()):
             reward = 1 + noise
         else:
             reward = 0 + noise
