@@ -69,9 +69,9 @@ class RegretGameTrainer:
             ]
         }
 
-        if "base_learner" in config:
-            base_cls = get_learner_class(config["base_learner"])
-            base_config = config.get("base_config", {})
+        if "learner" in config:
+            base_cls = get_learner_class(config["learner"])
+            base_config = config.get("learner_config", {})
         else:
             base_cls = None
             base_config = None
@@ -255,7 +255,7 @@ class RegretGameTrainer:
         # Do evaluation if needed (only evaluate Alice and Bob)
         if self._current_iteration % self._eval_iterations == 0:
             for id, learner in self._learners.items():
-                self._eval_policies[id].update(learner.get_update(eval=True))
+                self._eval_policies[id].update(learner.get_actor_update(eval=True))
 
             policy_fn = lambda id: "alice" if id == self._alice_id else "bob"
 
@@ -292,6 +292,7 @@ class RegretGameTrainer:
         for id, learner in self._learners.items():
             policies[id] = learner.export_policy()
 
+        for id in ["alice", "bob"]:
             for r in range(self._round):
                 pid = f"{id}_{r}"
                 policies[pid] = self._training_policies[pid].model

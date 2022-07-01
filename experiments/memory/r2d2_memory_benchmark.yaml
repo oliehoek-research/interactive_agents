@@ -6,7 +6,8 @@ r2d2_memory_benchmark:
   config:
     max_steps: 500
     iteration_episodes: 32
-    eval_episodes: 8
+    eval_iterations: 10
+    eval_episodes: 64
     env: memory
     env_config:
       length: 
