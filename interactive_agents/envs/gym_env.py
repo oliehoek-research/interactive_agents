@@ -13,7 +13,6 @@ class GymEnv(MultiagentEnv):
     def __init__(self, config, spec_only=False):  # TODO: Allow config to specify preprocessor stack
         assert "name" in config, "must specify name of gym environment"
         self._env = gym.make(config.get("name"))
-        super(GymEnv, self).__init__(gym.make(config.get("name")))
 
         self._agent_id = config.get("agent_id", "agent")
 

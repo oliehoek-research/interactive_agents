@@ -12,12 +12,17 @@ from interactive_agents.stopwatch import Stopwatch
 class RegretGameTrainer:
 
     def __init__(self, config, seed=0, device="cpu", verbose=False):
-        self._round_iterations = config.get("round_iterations", 10)
-        self._burn_in_iterations = config.get("burn_in_iterations", 10)
+        self._round_iterations = config.get("round_iterations", 100)
+        self._burn_in_iterations = config.get("burn_in_iterations", 100)
         self._weight_decay = config.get("weight_decay", 0.0)
-        self._alice_episodes = config.get("alice_episodes", 100)
-        self._bob_episodes = config.get("bob_episodes", 100)
+
+        self._alice_episodes = config.get("alice_episodes", 128)
+        self._bob_episodes = config.get("bob_episodes", 128)
         self._max_steps = config.get("max_steps", 100)
+
+        self._eval_iterations = config.get("eval_iterations", 10)
+        self._eval_episodes = config.get("eval_episodes", 64)
+
         self._seed = seed
         self._device = device
         self._verbose = verbose
@@ -32,6 +37,7 @@ class RegretGameTrainer:
 
         env_name = config.get("env")
         env_config = config.get("env_config", {})
+        env_eval_config = config.get("env_eval_config", env_config)
         env_cls = get_env_class(env_name)
 
         # Build environment - get observation and action spaces
@@ -39,13 +45,15 @@ class RegretGameTrainer:
         obs_spaces = self._env.observation_spaces
         action_spaces = self._env.action_spaces
 
+        self._eval_env = env_cls(env_eval_config, spec_only=False)
+
         assert len(obs_spaces.keys()) == 2, "regret games are only defined for two-player games"
 
+        # Initialize learners
         ids = list(obs_spaces.keys())
         self._alice_id = config.get("alice_id", ids[0])
         self._bob_id = config.get("bob_id", ids[1])
 
-        # Initialize learners
         spaces = {
             "alice": [
                 obs_spaces[self._alice_id],
@@ -61,22 +69,33 @@ class RegretGameTrainer:
             ]
         }
 
-        self._learners = {}
-        for pid, (obs_space, action_space) in spaces.items():
-            if pid in config:
-                cls_name = config.get(pid, "R2D2")
-                conf = config.get(f"{pid}_config", {})
-            else:
-                cls_name = config.get("alice", "R2D2")
-                conf = config.get("alice_config", {})
+        if "learner" in config:
+            base_cls = get_learner_class(config["learner"])
+            base_config = config.get("learner_config", {})
+        else:
+            base_cls = None
+            base_config = None
 
-            cls = get_learner_class(cls_name)
-            self._learners[pid] = cls(obs_space, action_space, conf, device)
+        self._learners = {}
+        for id, (obs_space, action_space) in spaces.items():
+            if "learners" in config and id in config["learners"]:
+                learner_cls = get_learner_class(config["learners"][id])
+                learner_config = config["learners"].get(f"{id}_config", {})
+            elif base_cls is not None:
+                learner_cls = base_cls
+                learner_config = base_config
+            else:
+                raise ValueError(f"must specify either a base learner or a learner for '{id}'")
+            
+            self._learners[id] = learner_cls(obs_space, 
+                action_space, learner_config, device)
 
         # Initialize training policies
         self._training_policies = {}
+        self._eval_policies = {}
         for id, learner in self._learners.items():
             self._training_policies[id] = learner.make_policy()
+            self._eval_policies[id] = learner.make_policy(eval=True)
 
         # Statistics and timers
         self._global_timer = Stopwatch()
@@ -105,9 +124,9 @@ class RegretGameTrainer:
 
         self._checkpoint_dist = dist / np.sum(dist)
 
-        # Save policy checkpoints
-        for id, learner in self._learners.items():
-            policy = FrozenPolicy(learner.export_policy(), self._device)
+        # Save policy checkpoints - no need to checkpoint Eve
+        for id in ["alice", "bob"]:
+            policy = FrozenPolicy(self._learners[id].export_policy(), self._device)
             pid = f"{id}_{round - 1}"
 
             self._training_policies[pid] = policy
@@ -119,184 +138,108 @@ class RegretGameTrainer:
         return sample(self._env, self._training_policies, 
             episodes, self._max_steps, policy_fn)
 
-    # NOTE: Check that this usage is correct
-    def _sample_checkpoints(self, id, pid, checkpoint_pid, episodes):
-        pids = self._checkpoint_pids[checkpoint_pid]
+    def _sample_checkpoints(self, id, map, episodes):
+        pid = map[id]
+        pids = self._checkpoint_pids
         dist = self._checkpoint_dist
 
-        policy_fn = lambda a: pid if a == id else np.random.choice(pids, p=dist)            
+        policy_fn = lambda a: pid if a == id else np.random.choice(pids[map[a]], p=dist)            
 
         return sample(self._env, self._training_policies, 
             episodes, self._max_steps, policy_fn)
 
-    def _learn(self, 
-            alice_batch, 
-            bob_alice_batch, 
-            bob_eve_batch, 
-            eve_batch):
-        stats = {}
+    def _burn_in_sampling(self):
 
-        # Train alice policy
-        stats["alice"] = self._learners["alice"].learn(alice_batch)
-
-        # Train response strategy
-        stats["eve"] = self._learners["eve"].learn(eve_batch)
-
-        # Modify partner rewards and combine batches
-        for episode in bob_alice_batch:
-            episode[Batch.REWARD] = -episode[Batch.REWARD]
-
-        bob_batch = bob_alice_batch + bob_eve_batch
-
-        # Train partner strategy
-        stats["bob"] = self._learners["bob"].learn(bob_batch)
-
-        return stats
-
-    def _burn_in_update(self):
-        stats = {}
-
-        # Collect training batches
-        sampling_time = self._sampling_timer.elapsed()
-        self._sampling_timer.start()
-
-        alice_batch, alice_stats = self._sample({
+        # Sample Alice playing with Bob
+        alice_batch = self._sample({
             self._alice_id: "alice",
             self._bob_id: "bob"
         }, self._alice_episodes)
 
-        bob_batch, bob_stats = self._sample({
+        # Sample Eve playing with Bob
+        bob_batch = self._sample({
             self._alice_id: "eve",
             self._bob_id: "bob"
         }, self._bob_episodes)
 
-        self._sampling_timer.stop()
-        sampling_time = self._sampling_timer.elapsed() - sampling_time + 1e-6
+        # Modify Bobs rewards when playing with Alice
+        for episode in alice_batch["bob"]:
+            episode[Batch.REWARD] = -episode[Batch.REWARD]
 
-        # Collect sampling statistics
-        for key, value in alice_stats.items():
-            stats["sampling/alice/" + key] = value
+        # Combine and return Batches
+        batches = Batch()
+        batches.extend(alice_batch)
+        batches.extend(bob_batch)
+
+        return batches
+
+    def _sampling(self):
         
-        for key, value in bob_stats.items():
-            stats["sampling/bob/" + key] = value
+        # Sample Alice playing with Bob's past checkpoints
+        alice_batch = self._sample_checkpoints(self._alice_id, {
+            self._alice_id: "alice",
+            self._bob_id: "bob"
+        }, self._alice_episodes)
 
-        episodes = alice_stats["episodes"] + bob_stats["episodes"]
-        stats["sampling/episodes_per_s"] = episodes / sampling_time
+        # Sample Bob playing with Alice's past checkpoints
+        bob_batch = self._sample_checkpoints(self._bob_id, {
+            self._alice_id: "alice",
+            self._bob_id: "bob"
+        }, self._alice_episodes)
 
-        timesteps = alice_stats["timesteps"] + alice_stats["timesteps"]
-        stats["sampling/timesteps_per_s"] = timesteps / sampling_time
+        # NOTE: It may eventually make sense to implement a CDTE approach for Eve and Bob
+        # Sample Bob and Eve playing with each other's current policies
+        eve_bob_batch = self._sample({
+            self._alice_id: "eve",
+            self._bob_id: "bob"
+        }, self._bob_episodes)
 
-        self._episodes_total += episodes
-        self._timesteps_total += timesteps
+        # Modify Bobs rewards when playing with Alice
+        for episode in bob_batch["bob"]:
+            episode[Batch.REWARD] = -episode[Batch.REWARD]
 
-        stats["global/episodes_total"] = self._episodes_total
-        stats["global/timesteps_total"] = self._timesteps_total
-        stats["global/sampling_time_s"] = self._sampling_timer.elapsed()
+        # Combine and return batches
+        batches = Batch()
+        batches.extend(alice_batch.policy_batch("alice"))
+        batches.extend(bob_batch.policy_batch("bob"))
+        batches.extend(eve_bob_batch)
 
-        # Train on batches
-        self._learning_timer.start()
-        learning_stats = self._learn(
-            alice_batch.policy_batch("alice"),
-            alice_batch.policy_batch("bob"),
-            bob_batch.policy_batch("bob"),
-            bob_batch.policy_batch("eve"))
-        self._learning_timer.stop()
-
-        # Collect learning statistics
-        for pid, policy_stats in learning_stats.items():
-            for key, value in policy_stats.items():
-                stats[f"learning/{pid}/{key}"] = value
-
-        stats["global/learning_time_s"] = self._learning_timer.elapsed()
-
-        return stats
-
-    def _update(self):
-        stats = {}
-
-        # Collect training batches
-        sampling_time = self._sampling_timer.elapsed()
-        self._sampling_timer.start()
-
-        alice_batch, alice_stats = self._sample_checkpoints(
-            self._alice_id, "alice", "bob", self._alice_episodes)
-
-        bob_alice_batch, bob_alice_stats = self._sample_checkpoints(
-            self._bob_id, "bob", "alice", self._alice_episodes)
-        
-        bob_eve_batch, bob_eve_stats = self._sample_checkpoints(
-            self._bob_id, "bob", "eve", self._bob_episodes)
-
-        eve_batch, eve_stats = self._sample_checkpoints(
-            self._alice_id, "eve", "bob", self._bob_episodes)
-
-        self._sampling_timer.stop()
-        sampling_time = self._sampling_timer.elapsed() - sampling_time + 1e-6
-
-        # Collect sampling statistics
-        for key, value in alice_stats.items():
-            stats["sampling/alice/" + key] = value
-
-        for key, value in bob_alice_stats.items():
-            stats["sampling/bob_alice/" + key] = value
-
-        for key, value in bob_eve_stats.items():
-            stats["sampling/bob_eve/" + key] = value
-
-        for key, value in eve_stats.items():
-            stats["sampling/eve/" + key] = value
-
-        episodes = alice_stats["episodes"] + bob_alice_stats["episodes"] \
-            + bob_eve_stats["episodes"] + eve_stats["episodes"]
-        stats["sampling/episodes_per_s"] = episodes / sampling_time
-
-        timesteps = alice_stats["timesteps"] + bob_alice_stats["timesteps"] \
-            + bob_eve_stats["timesteps"] + eve_stats["timesteps"]
-        stats["sampling/timesteps_per_s"] = timesteps / sampling_time
-
-        self._episodes_total += episodes
-        self._timesteps_total += timesteps
-
-        stats["global/episodes_total"] = self._episodes_total
-        stats["global/timesteps_total"] = self._timesteps_total
-        stats["global/sampling_time_s"] = self._sampling_timer.elapsed()
-
-        # Train on batches
-        self._learning_timer.start()
-        learning_stats = self._learn(
-            alice_batch.policy_batch("alice"),
-            bob_alice_batch.policy_batch("bob"),
-            bob_eve_batch.policy_batch("bob"),
-            eve_batch.policy_batch("eve"))
-        self._learning_timer.stop()
-
-        # Collect learning statistics
-        for pid, policy_stats in learning_stats.items():
-            for key, value in policy_stats.items():
-                stats[f"learning/{pid}/{key}"] = value
-
-        stats["global/learning_time_s"] = self._learning_timer.elapsed()
-
-        return stats
+        return batches
 
     def train(self):
         self._global_timer.start()
+        stats = {}
 
         # Update sampling policies
         for id, learner in self._learners.items():
             self._training_policies[id].update(learner.get_actor_update())
 
-        # Do training updates
-        if self._current_iteration < self._burn_in_iterations:
-            stats = self._burn_in_update()
-        else:
-            stats = self._update()
+        # Collect training batch and batch statistics
+        sampling_time = self._sampling_timer.elapsed()
+        self._sampling_timer.start()
 
-        # Print iteration stats
-        if self._verbose:
-            print(f"\n\nSEED {self._seed}, ITERATION {self._current_iteration}")
-            print(f"total episodes: {self._episodes_total}")
-            print(f"total timesteps: {self._timesteps_total}")
+        if self._current_iteration <= self._burn_in_iterations:
+            training_batch = self._burn_in_sampling()
+        else:
+            training_batch = self._sampling()
+        
+        self._sampling_timer.stop()
+        sampling_time = self._sampling_timer.elapsed() - sampling_time + 1e-6
+
+        for key, value in training_batch.statistics().items():
+            stats["sampling/" + key] = value
+
+        stats["sampling/episodes_per_s"] = training_batch.episodes / sampling_time
+        stats["sampling/timesteps_per_s"] = training_batch.timesteps / sampling_time
+
+        # Train learners on new training batch
+        for id, episodes in training_batch.items():
+            self._learning_timer.start()
+            learning_stats = self._learners[id].learn(episodes)
+            self._learning_timer.stop()
+
+            for key, value in learning_stats.items():
+                stats[f"learning/{id}/{key}"] = value
 
         # Increment iteration
         self._current_iteration += 1
@@ -309,9 +252,38 @@ class RegretGameTrainer:
                 self._round += 1
                 self._checkpoint(self._round)
         
-        # Add total training time
+        # Do evaluation if needed (only evaluate Alice and Bob)
+        if self._current_iteration % self._eval_iterations == 0:
+            for id, learner in self._learners.items():
+                self._eval_policies[id].update(learner.get_actor_update(eval=True))
+
+            policy_fn = lambda id: "alice" if id == self._alice_id else "bob"
+
+            eval_batch = sample(self._eval_env, self._eval_policies, 
+                self._eval_episodes, self._max_steps, policy_fn)
+
+            for key, value in eval_batch.statistics().items():
+                stats["eval/" + key] = value
+        
+        # Accumulate global statistics
         self._global_timer.stop()
+
+        self._episodes_total += training_batch.episodes
+        self._timesteps_total += training_batch.timesteps
+
+        stats["global/episodes_total"] = self._episodes_total
+        stats["global/timesteps_total"] = self._timesteps_total
+
         stats["global/total_time_s"] = self._global_timer.elapsed()
+        stats["global/sampling_time_s"] = self._sampling_timer.elapsed()
+        stats["global/learning_time_s"] = self._learning_timer.elapsed()
+
+        # Print iteration stats
+        if self._verbose:
+            print(f"\n\nSEED {self._seed}, ITERATION {self._current_iteration}")
+            print(f"total episodes: {self._episodes_total}")
+            print(f"total timesteps: {self._timesteps_total}")
+            print(f"mean sampling reward: {stats['sampling/reward_mean']}")
 
         return stats
     
@@ -320,6 +292,7 @@ class RegretGameTrainer:
         for id, learner in self._learners.items():
             policies[id] = learner.export_policy()
 
+        for id in ["alice", "bob"]:
             for r in range(self._round):
                 pid = f"{id}_{r}"
                 policies[pid] = self._training_policies[pid].model
