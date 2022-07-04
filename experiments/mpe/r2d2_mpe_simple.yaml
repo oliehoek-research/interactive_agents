@@ -1,21 +1,16 @@
-r2d2_self_play_coordination:
+r2d2_mpe_simple:
   stop:
     iterations: 2000
-  trainer: self_play
+  trainer: independent
   num_seeds: 4
   config:
-    max_steps: 500
-    round_iterations: 100
-    burn_in_iterations: 100
-    weight_decay: 0.0
+    max_steps: 200  # What should we actually set this to?
     iteration_episodes: 32
     eval_iterations: 10
     eval_episodes: 64
-    env: coordination
+    env: mpe
     env_config:
-      stages: 8
-      actions: 5
-      players: 2
+      scenario: simple_v2
     learner: R2D2
     learner_config:
       num_batches: 8
