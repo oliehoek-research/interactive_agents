@@ -30,7 +30,7 @@ r2d2_self_play_mpe_benchmark:
       double_q: True
       epsilon_initial: 0.5
       epsilon_iterations:
-        grid_searh: [500, 1500]
+        grid_search: [500, 1500]
       epsilon_final: 0.01
       replay_alpha: 0.6
       replay_epsilon: 0.01
