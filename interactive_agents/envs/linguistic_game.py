@@ -3,7 +3,7 @@ import numpy as np
 
 from .common import MultiagentEnv
 
-# TODO: This enviroment is better suited to the AEC representation
+# NOTE: This enviroment is better suited to the AEC representation, but AEC is hard to integrate with RL
 class LinguisticCoordination(MultiagentEnv):
     """
     The 'linguistic' coordination game, in which a speaker privately observes

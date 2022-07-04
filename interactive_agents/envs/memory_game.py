@@ -3,7 +3,7 @@ import numpy as np
 
 from .common import MultiagentEnv
 
-class MemoryGame(MultiagentEnv):  # TODO: What do they call this in the BSuite paper?
+class MemoryGame(MultiagentEnv):  # NOTE: What do they call this in the BSuite paper?
     """
     Abstract T-maze environment with noisy observations.  Similar to BSuite.
 
@@ -16,6 +16,7 @@ class MemoryGame(MultiagentEnv):  # TODO: What do they call this in the BSuite p
         self._noise = config.get("noise", 0.0)
 
         self._agent_id = config.get("agent_id", "agent")
+
         self._obs_shape = (self._num_cues + 2,)
         self.observation_spaces = {self._agent_id: Box(0, 2, shape=self._obs_shape)}
         self.action_spaces = {self._agent_id: Discrete(self._num_cues)}
