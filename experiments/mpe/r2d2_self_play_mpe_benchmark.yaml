@@ -1,10 +1,15 @@
-r2d2_mpe_benchmark:
+r2d2_self_play_mpe_benchmark:
   stop:
     iterations: 2000
-  trainer: independent
+  trainer: self_play
   num_seeds: 4
   config:
     max_steps: 200
+    round_iterations: 100
+    burn_in_iterations: 
+      grid_search: [100, 1000, 2000]
+    weight_decay:
+      grid_search: [0.0, 0.7, 1.0]
     iteration_episodes: 64
     eval_iterations: 10
     eval_episodes: 64
@@ -14,28 +19,25 @@ r2d2_mpe_benchmark:
         grid_search: [simple_v2, simple_push_v2, simple_tag_v2, simple_adversary_v2]
     learner: R2D2
     learner_config:
-      lr: 
-        grid_search: [0.001, 0.01]
+      lr: 0.001
       dueling: True
-      num_batches:
-        grid_search: [16, 32]
+      num_batches: 32
       batch_size: 32
-      sync_iterations:
-        grid_search: [10, 20]
-      learning_starts: 50
+      sync_iterations: 10
+      learning_starts: 20
       gamma: 0.99
       beta: 0.5
       double_q: True
       epsilon_initial: 0.5
-      epsilon_iterations: 1500
+      epsilon_iterations:
+        grid_searh: [500, 1500]
       epsilon_final: 0.01
-      replay_alpha:
-        grid_search: [0.6, 0.0]
+      replay_alpha: 0.6
       replay_epsilon: 0.01
       replay_eta: 0.5
-      replay_beta_iterations: 1500
-      buffer_size: 
-        grid_search: [16384, 32768]
+      replay_beta_iterations:
+        grid_search: [500, 1500]
+      buffer_size: 16384
       dueling: True
       model: lstm
       model_config:

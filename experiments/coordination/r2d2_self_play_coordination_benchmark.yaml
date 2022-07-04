@@ -1,0 +1,46 @@
+r2d2_self_play_coordination_benchmark:
+  stop:
+    iterations: 2000
+  trainer: self_play
+  num_seeds: 4
+  config:
+    max_steps: 500
+    round_iterations: 100
+    burn_in_iterations: 
+      grid_search: [100, 1000, 2000]
+    weight_decay:
+      grid_search: [0.0, 0.7, 1.0]
+    iteration_episodes: 64
+    eval_iterations: 10
+    eval_episodes: 64
+    env: coordination
+    env_config:
+      stages: 
+        grid_search: [8, 16]
+      actions: 5
+      players: 2
+    learner: R2D2
+    learner_config:
+      num_batches: 32
+      batch_size: 32
+      sync_iterations: 10
+      learning_starts: 20
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 
+        grid_searh: [500, 1500]
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.5
+      replay_beta_iterations:
+        grid_search: [500, 1500]
+      buffer_size: 16384
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 64
+        hidden_layers: 1
+      lr: 0.001
