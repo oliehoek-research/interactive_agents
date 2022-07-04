@@ -1,27 +1,38 @@
 r2d2_coordination:
   stop:
-    total_iterations: 300
+      iterations: 2000
   trainer: independent
-  num_seeds: 10
+  num_seeds: 4
   config:
-    max_steps: 20
-    iteration_episodes: 100
-    eval_episodes: 10
+    max_steps: 500
+    iteration_episodes: 32
+    eval_iterations: 10
+    eval_episodes: 64
     env: coordination
     env_config:
       stages: 8
-      actions: 10
+      actions: 5
       players: 2
     learner: R2D2
     learner_config:
-      batch_size: 8
-      batches_per_episode: 1.0
-      sync_interval: 100
-      epsilon: 0.1
+      num_batches: 8
+      batch_size: 16
+      sync_iterations: 5
+      learning_starts: 20
       gamma: 0.99
       beta: 0.5
-      lr: 0.01
-      hidden_size: 32
-      hidden_layers: 1
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 1500
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.5
+      replay_beta_iterations: 1500
+      buffer_size: 16384
       dueling: True
-      buffer_size: 1042
+      model: lstm
+      model_config:
+        hidden_size: 64
+        hidden_layers: 1
+      lr: 0.001
