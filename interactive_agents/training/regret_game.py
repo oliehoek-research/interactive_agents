@@ -124,8 +124,8 @@ class RegretGameTrainer:
 
         self._checkpoint_dist = dist / np.sum(dist)
 
-        # Save policy checkpoints - no need to checkpoint Eve
-        for id in ["alice", "bob"]:
+        # Save policy checkpoints
+        for id in ["alice", "bob", "eve"]:
             policy = FrozenPolicy(self._learners[id].export_policy(), self._device)
             pid = f"{id}_{round - 1}"
 
@@ -292,7 +292,7 @@ class RegretGameTrainer:
         for id, learner in self._learners.items():
             policies[id] = learner.export_policy()
 
-        for id in ["alice", "bob"]:
+        for id in ["alice", "bob", "eve"]:
             for r in range(self._round):
                 pid = f"{id}_{r}"
                 policies[pid] = self._training_policies[pid].model
