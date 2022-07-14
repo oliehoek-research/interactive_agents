@@ -1,4 +1,4 @@
-
+# NOTE: One logger represents a single experiment with a single random seed and a single config.  There are two ways in which experiments are organi
 
 
 class MultiLogger:
