@@ -25,6 +25,7 @@ def parse_args():
     parser = argparse.ArgumentParser("Computes the Joint Policy Correlation matrix for a set of trained policies")
 
     parser.add_argument("path", type=str, help="path to directory containing training results")
+    parser.add_argument("num_seeds", type=int, help="number of seeds used in the experiment") 
     parser.add_argument("-o", "--output-path", type=str, default=None,
                         help="directory in which we should save matrix (defaults to experiment directory)")
     parser.add_argument("-f", "--filename", type=str, default="jpc",
@@ -91,7 +92,7 @@ def plot_matrix(matrix, path, title, min, max, size=300, disp=False):
         plt.show(block=True)
 
 
-def load_populations(path, policy_map):
+def load_populations(path, policy_map, num_seeds):
     populations = defaultdict(dict)
     config_path = os.path.join(path, "config.yaml")
     
@@ -129,7 +130,7 @@ def load_populations(path, policy_map):
 
             map[agent_id] = policy_id
 
-    for seed in range(config.get("num_seeds", 1)):
+    for seed in range(num_seeds):
         sub_path = os.path.join(path, f"seed_{seed}/policies")
 
         if os.path.isdir(sub_path):
@@ -162,7 +163,7 @@ def evaluate(env_cls, env_config, models, num_episodes, max_steps):
         
         policies[id] = FrozenPolicy(model)
 
-    _, stats = sample(env, policies, num_episodes, max_steps)
+    stats = sample(env, policies, num_episodes, max_steps).statistics()
     return stats
 
 
@@ -243,7 +244,7 @@ if __name__ == '__main__':
     torch.set_num_threads(args.num_cpus)
 
     print(f"Loading policies from: {args.path}")
-    populations, config = load_populations(args.path, args.map)
+    populations, config = load_populations(args.path, args.map, args.num_seeds)
 
     print(f"Evaluating Policies")
     jpc = cross_evaluate(populations, config, args.num_cpus, args.num_episodes)
