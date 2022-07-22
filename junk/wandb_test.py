@@ -2,6 +2,7 @@ import argparse
 import math
 from multiprocessing import Pool
 import os
+from re import X
 import time
 import traceback
 import wandb
@@ -23,10 +24,13 @@ def parse_args():
     
     parser.add_argument("-t", "--time", default=300, type=float,
                         help="the time limit for each dummy experiment in seconds (default: 300)")
-    parser.add_argument("-r", "--rate", default=20, type=float,
-                        help="the number of dummy training iterations to run per second (default: 20)")
+    parser.add_argument("-r", "--rate", default=1, type=float,
+                        help="the number of dummy training iterations to run per second (default: 1)")
     parser.add_argument("--scale", default=0.01, type=float,
                         help="increment along the x-axis per iteration (default: 0.01)")
+
+    parser.add_argument("--sync-iters", default=1, type=float,
+                        help="number of iterations between server syncs")
 
     return parser.parse_args()
 
@@ -51,22 +55,34 @@ class WandBSession:
                           reinit=True)
 
 
-def experiment(name, session, iter_per_s, time_limit, scale):
+def experiment(name, session, iter_per_s, time_limit, scale, sync_iters):
     start_time = time.time()
     sleep_interval = 1.0 / iter_per_s 
     config = {
         "iter_per_s": iter_per_s,
         "time_limit": time_limit,
         "scale": scale,
+        "sync_iters": sync_iters,
     }
 
     with session.run(name, config):
-        while time.time() - start_time > time_limit:
+        x = 0.0
+        iteration = 0
+
+        while time.time() - start_time <= time_limit:
+            if (iteration + 1) % sync_iters == 0:
+                commit = True
+            else:
+                commit = False
+
             wandb.log({
-                "x": idx,
-                "sin": math.sin(idx),
-                "cos": math.cos(idx)
-            })
+                "x": x,
+                "sin": math.sin(x),
+                "cos": math.cos(x)
+            }, step=iteration, commit=commit)
+
+            x += scale
+            iteration += 1
 
             time.sleep(sleep_interval)
 
@@ -77,6 +93,9 @@ def print_error(error):
 
 if __name__ == "__main__":
     args = parse_args()
+
+    # Enable the WandB service to allow distributed logging
+    wandb.require("service")
 
     # Initialize process pool
     pool = Pool(args.num_processes)
@@ -92,7 +111,7 @@ if __name__ == "__main__":
     for idx in range(args.num_processes):
         name = f"run_{idx}"
         runs.append(pool.apply_async(experiment, 
-            (name, session, args.rate, args.time, args.scale), error_callback=print_error))
+            (name, session, args.rate, args.time, args.scale, args.sync_iters), error_callback=print_error))
     
     for run in runs:
         run.wait()
