@@ -1,13 +1,10 @@
-r2d2_self_play_coordination:
+r2d2_meta_learning_coordination:
   stop:
-    iterations: 2000
-  trainer: self_play
+      iterations: 500
+  trainer: independent
   num_seeds: 4
   config:
     max_steps: 500
-    round_iterations: 100
-    burn_in_iterations: 100
-    weight_decay: 0.0
     iteration_episodes: 32
     eval_iterations: 10
     eval_episodes: 64
@@ -16,6 +13,7 @@ r2d2_self_play_coordination:
       stages: 8
       actions: 5
       players: 2
+      meta_learning: True
     learner: R2D2
     learner_config:
       num_batches: 16
@@ -26,12 +24,12 @@ r2d2_self_play_coordination:
       beta: 0.5
       double_q: True
       epsilon_initial: 0.5
-      epsilon_iterations: 1500
+      epsilon_iterations: 250
       epsilon_final: 0.01
       replay_alpha: 0.6
       replay_epsilon: 0.01
       replay_eta: 0.5
-      replay_beta_iterations: 1500
+      replay_beta_iterations: 250
       buffer_size: 16384
       dueling: True
       model: lstm

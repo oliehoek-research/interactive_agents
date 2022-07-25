@@ -1,14 +1,15 @@
-r2d2_self_play_coordination:
+r2d2_regret_game_coordination:
   stop:
     iterations: 2000
-  trainer: self_play
+  trainer: regret_game
   num_seeds: 4
   config:
     max_steps: 500
     round_iterations: 100
     burn_in_iterations: 100
     weight_decay: 0.0
-    iteration_episodes: 32
+    alice_episodes: 32
+    bob_episodes: 32
     eval_iterations: 10
     eval_episodes: 64
     env: coordination
