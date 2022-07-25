@@ -20,6 +20,7 @@ class CoordinationGame(MultiagentEnv):
         self._focal_payoff = config.get("focal_payoff", 0.9)
         self._noise = config.get("payoff_noise", 0.0)
         self._other_play = config.get("other_play", False)
+        self._meta_learning = config.get("meta_learning", False)
 
         self._obs_size = self._num_actions * (self._num_players - 1)
 
@@ -29,8 +30,9 @@ class CoordinationGame(MultiagentEnv):
         self.action_spaces = {}
 
         for pid in self._pids:
-            self.observation_spaces[pid] = Box(0, 1, shape=(self._obs_size,))
-            self.action_spaces[pid] = Discrete(self._num_actions)
+            if (not self._meta_learning) or "agent_0" == pid:
+                self.observation_spaces[pid] = Box(0, 1, shape=(self._obs_size,))
+                self.action_spaces[pid] = Discrete(self._num_actions)
         
         self._current_stage = 0
         self._num_episodes = 0
@@ -38,6 +40,9 @@ class CoordinationGame(MultiagentEnv):
         # Action permutations for other-play
         self._forward_permutations = None
         self._backward_permutations = None
+
+        # Fixed agent action
+        self._fixed_agent_action = None
 
         # Variables used for visualization
         self._prev = []
@@ -65,7 +70,7 @@ class CoordinationGame(MultiagentEnv):
     
     def _permuted_obs(self, actions):
         obs = {}
-        for pid in self._pids:
+        for pid in self._learning_pids():
             obs[pid] = np.zeros(self._obs_size)
             index = 0
 
@@ -77,13 +82,30 @@ class CoordinationGame(MultiagentEnv):
         
         return obs
 
+    def _reset_fixed_action(self):
+        self._fixed_agent_action = np.random.randint(self._num_actions)
+
+    def _learning_pids(self):
+        if self._meta_learning:
+            return self._pids[:1]
+        else:
+            return self._pids
+
+    def _expand_actions(self, actions):
+        for pid in self._pids[1:]:
+            actions[pid] = self._fixed_agent_action
+
+        return actions
+
     def _obs(self, actions=None):
+        pids = self._learning_pids()
+
         obs = {}
-        for pid in self._pids:
+        for pid in pids:
             obs[pid] = np.zeros(self._obs_size)
 
         if actions is not None:
-            for pid in self._pids:
+            for pid in pids:
                 index = 0
 
                 for id, action in actions.items():
@@ -94,6 +116,7 @@ class CoordinationGame(MultiagentEnv):
         return obs
 
     def _step(self, actions):
+        pids = self._learning_pids()
 
         # Generate reward noise if needed
         if self._noise > 0:
@@ -109,12 +132,12 @@ class CoordinationGame(MultiagentEnv):
         else:
             reward = 0 + noise
 
-        rewards = {pid:reward for pid in self._pids}
+        rewards = {pid:reward for pid in pids}
 
         # Determine if final stage reached
         self._current_stage += 1
         done = self._num_stages <= self._current_stage
-        dones = {pid:done for pid in self._pids}
+        dones = {pid:done for pid in pids}
 
         # Save previous actions for rendering
         prev_actions = [actions[pid] for pid in self._pids]
@@ -128,20 +151,27 @@ class CoordinationGame(MultiagentEnv):
 
         if self._other_play:
             self._new_permutations()
+        
+        if self._meta_learning:
+            self._reset_fixed_action()
 
         return self._obs()
 
     def step(self, actions):  # NOTE: This wrapper for the step function just handles the other-play permutations
-        true_actions = actions.copy()  # NOTE: The action array will be used for learning, so don't modify it
+        actions = actions.copy()  # NOTE: The action array will be used for learning, so don't modify it
+
+        if self._meta_learning:
+            actions = self._expand_actions(actions)
+
         if self._other_play:
             for pid in self._pids:
-                true_actions[pid] = self._forward_permutations[pid][actions[pid]]
+                actions[pid] = self._forward_permutations[pid][actions[pid]]
 
-            obs = self._permuted_obs(true_actions)
+            obs = self._permuted_obs(actions)
         else:
-            obs = self._obs(true_actions)
+            obs = self._obs(actions)
         
-        rewards, dones = self._step(true_actions)
+        rewards, dones = self._step(actions)
 
         return obs, rewards, dones, None
 

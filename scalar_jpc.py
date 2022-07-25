@@ -3,6 +3,8 @@
 import argparse
 from collections import defaultdict
 import io
+import matplotlib
+matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 from multiprocessing import Pool
 import numpy as np
