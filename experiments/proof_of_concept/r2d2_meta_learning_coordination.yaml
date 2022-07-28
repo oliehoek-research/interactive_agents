@@ -10,7 +10,7 @@ r2d2_meta_learning_coordination:
     eval_episodes: 64
     env: coordination
     env_config:
-      stages: 8
+      stages: 16
       actions: 5
       players: 2
       meta_learning: True

@@ -358,4 +358,3 @@ if __name__ == '__main__':
         max=args.max,
         hide_seeds=args.hide_seeds,
         disp=args.display)    
-

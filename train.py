@@ -24,6 +24,10 @@ def parse_args():
                         help="the list of random seeds to run, overrides values from the config file")
     parser.add_argument("-t", "--triton", action="store_true",
                         help="the training is done in triton. changes the train and run behaviour!!!")
+
+    parser.add_argument("-r", "--resources", nargs="+",
+                        help="a list of key-value pairs representing file resources (policies, datasets, etc.)")
+    
     return parser.parse_args()
 
 
@@ -89,4 +93,4 @@ if __name__ == '__main__':
     else:
         print("Experiments NOT running on triton. Use --triton if you want to run on triton!")
         run_experiments(experiments, args.output_path, 
-        args.num_cpus, device, args.verbose, args.num_seeds, args.seeds)
+        args.num_cpus, device, args.verbose, args.num_seeds, args.seeds, args.resources)
