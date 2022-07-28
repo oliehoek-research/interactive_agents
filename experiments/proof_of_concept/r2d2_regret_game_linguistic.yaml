@@ -1,4 +1,4 @@
-r2d2_regret_game_coordination:
+r2d2_regret_game_linguistic:
   stop:
     iterations: 500
   trainer: regret_game
@@ -12,11 +12,10 @@ r2d2_regret_game_coordination:
     bob_episodes: 32
     eval_iterations: 10
     eval_episodes: 64
-    env: coordination
+    env: linguistic
     env_config:
-      stages: 16
+      stages: 32
       actions: 5
-      players: 2
     learner: R2D2
     learner_config:
       num_batches: 16

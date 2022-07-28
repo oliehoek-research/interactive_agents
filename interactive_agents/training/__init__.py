@@ -1,11 +1,13 @@
 from interactive_agents.training.independent import IndependentTrainer
 from interactive_agents.training.regret_game import RegretGameTrainer
 from interactive_agents.training.self_play import SelfPlayTrainer
+from interactive_agents.training.max_regret import MaxRegretTrainer
 
 TRAINERS = {
     "independent": IndependentTrainer,
     "regret_game": RegretGameTrainer,
     "self_play": SelfPlayTrainer,
+    "max_regret": MaxRegretTrainer,
 }
 
 def get_trainer_class(name):
