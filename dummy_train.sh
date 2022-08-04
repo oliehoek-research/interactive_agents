@@ -1,12 +1,15 @@
 #!/bin/bash
-#SBATCH --time=05:00:00
-#SBATCH --mem=16G
-#SBATCH --output=memorygame_%a.out
-#SBATCH --array=1-90
-#SBATCH --job-name=MemoryGame-Test
+#SBATCH --array=3324,7894,1932,6678,9087,5145
+#SBATCH --time=1:00:00
+#SBATCH --partition=influence 
+#SBATCH --qos=short
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=4
+#SBATCH --mem-per-cpu=300M
+#SBATCH --output=./results/debug/slurm/dummy_%a.out
+#SBATCH --job-name=Dummy-Test
 
-singularity exec $WRKDIR/torchenv.sif python3 train.py \
-    -f ./experiments/r2d2_memory/config_r2d2_memory_experiment`expr $SLURM_ARRAY_TASK_ID % 18`.yaml \
-    -o ./triton_multiagent_results/r2d2_memorygame_lengthVScues`expr $SLURM_ARRAY_TASK_ID % 18`/ \
-    --seeds `expr $SLURM_ARRAY_TASK_ID % 5` \
-    --triton
+singularity exec interactive_agents_singularity.sif dummy_train.py \
+    -f ./experiments/proof_of_concept/r2d2_self_play_coordination.yaml \
+    -o results/debug/slurm/dummy \
+    -s ${SLURM_ARRAY_TASK_ID}
