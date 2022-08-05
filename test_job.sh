@@ -5,5 +5,4 @@
 #SBATCH --nodes=1
 #SBATCH --job-name=Dummy-Test
 
-echo -n "This script is running on "
-hostname
+singularity exec singularity_image.sif test_script.py
