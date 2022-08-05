@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --array=3324,7894,1932,6678,9087,5145
+#SBATCH --array=1-10
 #SBATCH --time=1:00:00
 #SBATCH --partition=influence 
 #SBATCH --qos=short
