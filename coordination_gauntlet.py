@@ -14,7 +14,7 @@ from interactive_agents.sampling import FrozenPolicy
 
 
 def parse_args():
-    parser = argparse.ArgumentParser("Evaluates trained policies against a set of fixed agents in the coordination game.")  # TODO: I think we are using this string wrong
+    parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument("path", type=str, help="path to directory containing training results")
 
