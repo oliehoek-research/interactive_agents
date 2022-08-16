@@ -132,7 +132,7 @@ dmypy.json
 .idea
 
 # Experimental results
-results/
+results/debug
 
 # Container images
 singularity_image.sif
