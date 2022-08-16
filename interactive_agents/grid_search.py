@@ -115,9 +115,11 @@ def save_variations(base_name, base_config, free_parameters, set_parameters=[]):
                                              free_parameters=free_parameters[1:],
                                              set_parameters=set_parameters + [parameter]))
 
+        idx = 0
         for variation_name, config in variations.items():   
             variation_name = variation_name.replace("=", "").replace("," , "_")
-            variation_config_file = os.path.join(path,"config_{}.yaml".format(variation_name))
+            variation_config_file = os.path.join(path,"config_{}_experiment{}.yaml".format(base_name, idx))
+            idx += 1
             
             with open(variation_config_file, 'w') as config_file:
                 yaml.dump({variation_name: config}, config_file)

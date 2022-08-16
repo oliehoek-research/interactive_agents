@@ -40,3 +40,4 @@ r2d2_regret_game_coordination:
         hidden_size: 64
         hidden_layers: 1
       lr: 0.001
+
