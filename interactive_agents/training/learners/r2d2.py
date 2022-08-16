@@ -212,9 +212,7 @@ class R2D2:
         # Epsilon-greedy exploration
         self._epsilon = config.get("epsilon_initial", 1)
         self._epsilon_iterations = config.get("epsilon_iterations", 1000)
-        print(self._epsilon_iterations)
         self._epsilon_decay = self._epsilon - config.get("epsilon_final", 0.01)
-        print(self._epsilon_decay)
         self._epsilon_decay /= self._epsilon_iterations
 
         # Replay buffer

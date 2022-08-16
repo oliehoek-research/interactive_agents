@@ -43,6 +43,5 @@ From: nvidia/cuda:11.7.0-devel-ubuntu22.04
 	python3 -m pip install PyYAML==6.0
 	python3 -m pip install scipy==1.7.2
 	python3 -m pip install SuperSuit==3.3.5
+	python3 -m pip install tensorboardX==2.5
 	python3 -m pip install torch==1.11.0
-	
-	
