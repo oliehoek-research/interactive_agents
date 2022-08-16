@@ -20,12 +20,14 @@ from interactive_agents.sampling import sample, FrozenPolicy
 # TODO: We should probably automatically save the config if we are saving results to an alternative directory
 
 def parse_args():
-    parser = argparse.ArgumentParser("Computes the Joint Policy Correlation matrix (JPC) for a set of trained policies.")
+    parser = argparse.ArgumentParser("Computes the Joint Policy Correlation matrix (JPC) for a regret game trained Alice paired with a self-play trained Bob.")
 
-    parser.add_argument("path", type=str, help="path to directory containing training results")
-    parser.add_argument("num_seeds", type=int, help="number of seeds used in the experiment")
+    parser.add_argument("path_rg", type=str, help="(regret game!) path to directory containing Alice training results")
+    parser.add_argument("path_sp", type=str, help="(self play!) path to directory containing Bob training results")
+
+
     parser.add_argument("-o", "--output-path", type=str, default=None,
-                        help="directory in which we should save results (defaults to experiment directory)")
+                        help="directory in which we should save results (defaults to regret game experiment directory)")
     parser.add_argument("-t", "--tag", type=str, default="jpc",
                         help="sub-directory for JPC data (default: 'jpc')")
 
@@ -36,6 +38,10 @@ def parse_args():
 
     parser.add_argument("-m", "--mapping", nargs="+",
                         help="mapping from agent IDs to policy names (agent_id policy_name agent_id policy_name ...)")
+    
+    parser.add_argument("-s", "--sp_agents", nargs="+",
+                    help="list of agent IDs to take from self-play results")
+
     parser.add_argument("-a", "--adversaries", nargs="+",
                         help="list of agent IDs corresponding to the 'adversary' team of agents")
 
@@ -123,7 +129,6 @@ def plot_matrix(matrix,
     if disp:
         plt.show(block=True)
 
-
 def load_populations(path, 
                      policy_map):  # NOTE: Need to make sure this can handle arbitrary seeds
     populations = defaultdict(dict)  # NOTE: Dictionary of dictionaries
@@ -185,6 +190,110 @@ def load_populations(path,
                     else:
                         raise FileNotFoundError(f"seed {seed} does not define policy '{policy_id}'")
     
+    return populations, env.possible_agents, env_cls, env_config, max_steps
+
+def load_populations_selfvsregret(path_rg, path_sp, 
+                     policy_map, sp_agents):  # NOTE: Need to make sure this can handle arbitrary seeds
+    populations = defaultdict(dict)  # NOTE: Dictionary of dictionaries
+    rg_config_path = os.path.join(path_rg, "config.yaml")
+    sp_config_path = os.path.join(path_sp, "config.yaml")
+
+    
+    if not os.path.isfile(rg_config_path) or not os.path.isfile(sp_config_path):
+        raise ValueError(f" Config File '{rg_config_path}' and/or '{sp_config_path}' do not exist")
+
+    with open(rg_config_path, "r") as f:
+        rg_config = yaml.load(f, Loader=yaml.FullLoader)
+    with open(sp_config_path, "r") as f:
+        sp_config = yaml.load(f, Loader=yaml.FullLoader)
+
+    if "trainer" not in rg_config:  # NOTE: Needed when the top-level config dict has a single entry with the experiment name (this is the default)
+        rg_config = list(rg_config.values())[0]
+    if "trainer" not in sp_config:  # NOTE: Needed when the top-level config dict has a single entry with the experiment name (this is the default)
+        sp_config = list(sp_config.values())[0]
+
+
+    rg_trainer_config = rg_config.get("config", {})
+    sp_trainer_config = sp_config.get("config", {})
+
+
+    rg_max_steps = rg_config.get("max_steps", 100)
+    sp_max_steps = sp_config.get("max_steps", 100)
+    if rg_max_steps != sp_max_steps:
+        print(f"The regret game and self-play maximum evaluation steps are not the same ('{rg_max_steps}' != '{sp_max_steps}'). I will use the minimum of two.")
+    max_steps = min(rg_max_steps, sp_max_steps)
+
+
+    assert rg_trainer_config.get("env") == sp_trainer_config.get("env"), "The regret game and self-play environments are not the same"
+    env_name = rg_trainer_config.get("env")
+    env_cls = get_env_class(env_name)
+    
+    #TODO: This is using the regret game trainer's environment configuration. 
+    env_config = rg_trainer_config.get("env_config", {})
+    env_config = rg_trainer_config.get("env_eval_config", env_config)  # NOTE: If available, use the evaluation env configuration
+
+    env = env_cls(env_config, spec_only=True)
+
+
+    rg_map = {}  # NOTE: Need two policy maps
+    sp_map = {}
+    map = {}
+    for idx in range(0, len(policy_map), 2):
+        agent_id = policy_map[idx]
+        policy_id = policy_map[idx + 1]
+        map[agent_id] = policy_id
+        if agent_id in sp_agents:
+            sp_map[agent_id] = policy_id
+        else:
+            rg_map[agent_id] = policy_id
+    
+    for agent_id in env.possible_agents:
+        assert agent_id in map, f"no policy map given for '{agent_id}'"
+
+
+    #Load regret game policies
+    exp = re.compile("seed_(\d+)")
+    print("Loading regret game policies")
+    for obj in os.listdir(path_rg):
+        match = exp.match(obj)
+        if match is not None:
+            seed = match.group(1)  # NOTE: Okay to leave the seed as a string
+            seed_path = os.path.join(path_rg, obj, "policies")
+
+            if os.path.isdir(seed_path):
+                print(f"\nloading policies from: {seed_path}")
+                
+                for agent_id, policy_id in rg_map.items():
+                    policy_path = os.path.join(seed_path, f"{policy_id}.pt")
+                    print(f"loading: {policy_path}")
+
+                    if os.path.isfile(policy_path):
+                        model = torch.jit.load(policy_path)
+                        populations[seed][agent_id] = model  # NOTE: could end up loading the policy multiple times - not ideal
+                    else:
+                        raise FileNotFoundError(f"seed {seed} does not define policy '{policy_id}'")
+    #Load self-play policies
+    exp = re.compile("seed_(\d+)")
+    print("Loading self-play policies")
+    for obj in os.listdir(path_sp):
+        match = exp.match(obj)
+        if match is not None:
+            seed = match.group(1)  # NOTE: Okay to leave the seed as a string
+            seed_path = os.path.join(path_sp, obj, "policies")
+
+            if os.path.isdir(seed_path):
+                print(f"\nloading policies from: {seed_path}")
+                
+                for agent_id, policy_id in sp_map.items():
+                    policy_path = os.path.join(seed_path, f"{policy_id}.pt")
+                    print(f"loading: {policy_path}")
+
+                    if os.path.isfile(policy_path):
+                        model = torch.jit.load(policy_path)
+                        populations[seed][agent_id] = model  # NOTE: could end up loading the policy multiple times - not ideal
+                    else:
+                        raise FileNotFoundError(f"seed {seed} does not define policy '{policy_id}'")
+
     return populations, env.possible_agents, env_cls, env_config, max_steps
 
 
@@ -318,13 +427,13 @@ if __name__ == '__main__':
     if args.output_path is not None:
         path = get_dir(args.output_path, args.tag)
     else:
-        path = get_dir(args.path, args.tag)
+        path = get_dir(args.path_rg, args.tag)
 
-    print(f"Loading policies from: {args.path}")
-    populations, agent_ids, env_cls, env_config, max_steps = load_populations(args.path, args.mapping)
+    print(f"Loading regret game policies from: {args.path_rg} and self-play policies from: {args.path_sp}")
+    populations, agent_ids, env_cls, env_config, max_steps = load_populations_selfvsregret(args.path_rg, args.path_sp, args.mapping, args.sp_agents)
 
     print(f"Evaluating Policies with {args.num_cpus} processes")
-    jpc, seeds = cross_evaluate(populations=populations,
+    jpc_selfvsregret, seeds = cross_evaluate(populations=populations,
                                 agent_ids=agent_ids,
                                 env_cls=env_cls,
                                 env_config=env_config,
@@ -332,29 +441,57 @@ if __name__ == '__main__':
                                 num_cpus=args.num_cpus,
                                 num_episodes=args.num_episodes,
                                 adversaries=args.adversaries)
-
-    print("\nJPC Tensor:")
-    print(jpc)
-
-    np.save(os.path.join(path, "jpc.npy"), jpc, allow_pickle=False)
-
-    stats = jpc_stats(jpc)
+    print("\nJPC Tensor for Self vs Regret:")
+    print(jpc_selfvsregret)
+    stats_selfvsregret = jpc_stats(jpc_selfvsregret)
     print("statistics:")
 
-    for key, value in stats.items():
+    for key, value in stats_selfvsregret.items():
         print(f"    {key}: {value}")
 
-    with open(os.path.join(path, "jpc_stats.yaml"), 'w') as f:
-        yaml.dump(stats, f)
+    
+    print(f"Loading self-play policies from: {args.path_sp}")
+    populations, agent_ids, env_cls, env_config, max_steps = load_populations(args.path_sp, None)
+    
+    jpc_self, seeds = cross_evaluate(populations=populations,
+                                agent_ids=agent_ids,
+                                env_cls=env_cls,
+                                env_config=env_config,
+                                max_steps=max_steps,
+                                num_cpus=args.num_cpus,
+                                num_episodes=args.num_episodes,
+                                adversaries=args.adversaries)
+    print("\nJPC Tensor for Self-Play:")
+    print(jpc_self)
+    stats_self = jpc_stats(jpc_self)
+    print("statistics:")
+
+    for key, value in stats_self.items():
+        print(f"    {key}: {value}")
+
+
+    print("\n Difference between Self-Play and Self vs Regret:")
+    diff_dict = {key: stats_selfvsregret[key] - stats_self[key] for key in stats_selfvsregret.keys()}
+    for key, value in diff_dict.items():
+        print(f"    {key}: {value}")
+
+
+    #np.save(os.path.join(path, "jpc_selfvsregret.npy"), jpc, allow_pickle=False)
+
+    with open(os.path.join(path, "jpc_difference_stats.yaml"), 'w') as f:
+        yaml.dump(diff_dict, f)
 
     print(f"\nrendering JPC tensor")
     plot_matrix(
-        matrix=jpc,
+        matrix=jpc_selfvsregret - jpc_self,
         seeds=seeds,
-        path=os.path.join(path, "jpc.png"),
+        path=os.path.join(path, "jpc_diff.png"),
         title=args.title,
         min=args.min,
         max=args.max,
         hide_seeds=args.hide_seeds,
-        disp=args.display)    
+        disp=args.display) 
+
+
+
 
