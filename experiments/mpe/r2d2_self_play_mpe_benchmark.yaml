@@ -7,16 +7,16 @@ r2d2_self_play_mpe_benchmark:
     max_steps: 200
     round_iterations: 100
     burn_in_iterations: 
-      grid_search: [100, 1000, 2000]
+      grid_search: [1000, 2000]
     weight_decay:
-      grid_search: [0.0, 0.7, 1.0]
+      grid_search: [0.0, 0.5]
     iteration_episodes: 64
     eval_iterations: 10
     eval_episodes: 64
     env: mpe
     env_config:
-      scenario:
-        grid_search: [simple_v2, simple_push_v2, simple_tag_v2, simple_adversary_v2]
+      scenario: simple_reference_v2
+      N: 2
     learner: R2D2
     learner_config:
       lr: 0.001
@@ -41,5 +41,6 @@ r2d2_self_play_mpe_benchmark:
       dueling: True
       model: lstm
       model_config:
-        hidden_size: 64
+        hidden_size:
+            grid_search: [64, 128]
         hidden_layers: 1
