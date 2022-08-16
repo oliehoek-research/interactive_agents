@@ -6,8 +6,8 @@ def get_coordination_game():
 
 
 def get_linguistic_game():
-    from interactive_agents.envs.linguistic_game import LinguisticGame
-    return LinguisticGame
+    from interactive_agents.envs.linguistic_game import LinguisticCoordination
+    return LinguisticCoordination
 
 
 def get_gym_env():
