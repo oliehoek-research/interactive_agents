@@ -134,3 +134,6 @@ dmypy.json
 # Experimental results
 results/debug
 wandb
+
+# Container images
+singularity_image.sif
