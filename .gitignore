@@ -132,7 +132,7 @@ dmypy.json
 .idea
 
 # Experimental results
-results/debug
+results
 wandb
 
 # Container images
