@@ -1,19 +1,16 @@
-r2d2_self_play_coordination:
+r2d2_max_regret_coordination:
   stop:
-    iterations: 2000
-  trainer: self_play
+    iterations: 1000
+  trainer: max_regret
   num_seeds: 4
   config:
     max_steps: 500
-    round_iterations: 100
-    burn_in_iterations: 100
-    weight_decay: 0.0
-    iteration_episodes: 32
+    alice_episodes: 32
+    bob_episodes: 32
     eval_iterations: 10
-    eval_episodes: 64
     env: coordination
     env_config:
-      stages: 8
+      stages: 16
       actions: 5
       players: 2
     learner: R2D2
@@ -26,15 +23,15 @@ r2d2_self_play_coordination:
       beta: 0.5
       double_q: True
       epsilon_initial: 0.5
-      epsilon_iterations: 1500
+      epsilon_iterations: 700
       epsilon_final: 0.01
       replay_alpha: 0.6
       replay_epsilon: 0.01
       replay_eta: 0.5
-      replay_beta_iterations: 1500
+      replay_beta_iterations: 700
       buffer_size: 16384
       dueling: True
-      model: lstm
+      model: dense
       model_config:
         hidden_size: 64
         hidden_layers: 1

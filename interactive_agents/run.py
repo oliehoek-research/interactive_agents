@@ -1,6 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 from multiprocessing.sharedctypes import Value
+import resource
 from git import Repo
 from multiprocessing import Pool
 import numpy as np
@@ -195,13 +196,25 @@ def run_experiments(experiments,
                     device="cpu", 
                     verbose=False, 
                     num_seeds=None, 
-                    seeds=None):
+                    seeds=None,
+                    resources=None):
 
     # Limit CPU paralellism globally
     torch.set_num_threads(num_cpus)
 
     # Uses the built-in multiprocessing pool to schedule experiments
     pool = Pool(num_cpus)
+
+    # Convert resource list to dictionary (do not load files yet, let the trainer do that)
+    if resources is not None:
+        resource_dict = {}  # NOTE: Need two policy maps
+
+        for idx in range(0, len(resources), 2):
+            resource_id = str(resources[idx])
+            resource_path = str(resources[idx + 1])
+            resource_dict[resource_id] = resource_path
+        
+        resources = resource_dict
 
     # Generate hyperparameter variations and queue all trials
     trials = []
@@ -213,6 +226,9 @@ def run_experiments(experiments,
             config["num_seeds"] = num_seeds
         if seeds is not None:
             config["seeds"] = seeds
+
+        # Add resource paths to the config  # NOTE: This will fail if we do not specify a trainer config
+        config["config"]["resources"] = resources
 
         # Get grid-search variations of config (for hyperparameter tuning)
         variations = grid_search(name, config)
