@@ -12,10 +12,15 @@ def parse_args():
                         help="if specified, use config options from this file.")
     parser.add_argument("-o", "--output-path", type=str, default="results/debug",
                         help="directory in which we should save results")
+    
+    # NOTE: Currently, parallelism is only allowed across seeds and configurations, none of our trainers support multiple worker threads
     parser.add_argument("-n", "--num-cpus", type=int, default=1,
                         help="the number of parallel worker processes to launch")
+
+    # NOTE: We will need to figure out how to specify GPU resources available through SLURM
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="enable GPU if available")
+
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print data for every training iteration")
     parser.add_argument("--num-seeds", type=int,
@@ -25,8 +30,9 @@ def parse_args():
     parser.add_argument("-t", "--triton", action="store_true",
                         help="the training is done in triton. changes the train and run behaviour!!!")
 
+    # NOTE: How this is used is trainer dependent
     parser.add_argument("-r", "--resources", nargs="+",
-                        help="a list of key-value pairs representing file resources (policies, datasets, etc.)")
+                        help="a list of key-value pairs representing file resources (policies, datasets, etc.)")  # NOTE: This is mainly used to load pre-trained partner strategies
     
     return parser.parse_args()
 

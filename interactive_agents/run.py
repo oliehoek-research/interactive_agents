@@ -1,7 +1,5 @@
 from collections import defaultdict
 from datetime import datetime
-from multiprocessing.sharedctypes import Value
-import resource
 from git import Repo
 from multiprocessing import Pool
 import numpy as np
@@ -10,6 +8,7 @@ import os.path
 import pandas
 from tensorboardX import SummaryWriter
 import torch
+from torch.multiprocessing import Pool
 import traceback
 import yaml
 
@@ -258,6 +257,7 @@ def run_experiments_triton(experiments,
                     seeds=None):
 
     assert seeds is not None, "The triton experiment must run with a seed specified."
+   
     # Limit CPU paralellism globally
     torch.set_num_threads(num_cpus)
 

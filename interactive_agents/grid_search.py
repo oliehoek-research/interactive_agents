@@ -2,7 +2,6 @@
 '''Implements grid-search over training configurations'''
 from collections import namedtuple
 from copy import deepcopy
-import interactive_agents.run as rr
 import os
 import os.path
 import yaml
@@ -82,10 +81,17 @@ def get_variations(base_name, base_config, free_parameters, set_parameters=[]):
 
         return variations
 
+# Copied from 'run.py' to avoid circular dependency
+def make_or_use_dir(path, tag):
+    sub_path = os.path.join(path, tag)
+    if not os.path.exists(sub_path):
+        os.makedirs(sub_path)
+    return sub_path
+
 def save_variations(base_name, base_config, free_parameters, set_parameters=[]):
     '''Takes a list of tunable parameters and generates a list of configurations'''
 
-    path = rr.make_or_use_dir("./experiments", base_name)
+    path = make_or_use_dir("./experiments", base_name)
 
     if len(free_parameters) == 0:
         name = []
