@@ -4,7 +4,6 @@ import argparse
 from collections import defaultdict
 import io
 import matplotlib.pyplot as plt
-from multiprocessing import Pool
 import numpy as np
 import os
 import os.path
@@ -13,6 +12,7 @@ import traceback
 import yaml
 
 import torch
+from torch.multiprocessing import Pool
 
 from interactive_agents.envs import get_env_class
 from interactive_agents.sampling import sample, FrozenPolicy
