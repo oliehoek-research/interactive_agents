@@ -54,6 +54,10 @@ def parse_args():
                         help="provide one or more experiment config files")
     parser.add_argument("-o", "--output-path", type=str, default="results/debug",
                         help="directory in which we should save results")
+    parser.add_argument("-n", "--num-cpus", type=int, default=1,
+                        help="the number of parallel experiments to launch")
+    parser.add_argument("-g", "--gpu", action="store_true",
+                        help="enable GPU acceleration if available")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print data for every training iteration")
     parser.add_argument("--num-seeds", type=int,

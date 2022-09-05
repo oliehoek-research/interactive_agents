@@ -8,7 +8,7 @@ import os.path
 import pandas
 import yaml
 
-from interactive_agents.grid_search import grid_search
+from interactive_agents.util.grid_search import grid_search
 
 
 class Configuration:

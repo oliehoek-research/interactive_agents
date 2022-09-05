@@ -1,7 +1,7 @@
 from collections import defaultdict
 from datetime import datetime
 from git import Repo
-from multiprocessing import Pool
+# from multiprocessing import Pool
 import numpy as np
 import os
 import os.path
@@ -12,7 +12,7 @@ from torch.multiprocessing import Pool
 import traceback
 import yaml
 
-from interactive_agents.grid_search import grid_search
+from interactive_agents.util.grid_search import grid_search
 from interactive_agents.training import get_trainer_class
 
 def make_unique_dir(path, tag):
@@ -63,7 +63,8 @@ def get_stop_conditions(stop):
     return max_iterations, termination
 
 
-def run_trail(base_path, config, seed, device, verbose):
+# NOTE: Right now running this method by itself saves no metadata, which isn't ideal (error prone)
+def run_experiment(base_path, config, seed, device, verbose):
     path = os.path.join(base_path, f"seed_{seed}")  
     os.makedirs(path)
 
@@ -147,7 +148,7 @@ def launch_experiment(path, name, config, pool, device, verbose):
     trials = []
     for seed in seeds:
         print(f"launching: {name} - seed: {seed}")
-        trials.append(pool.apply_async(run_trail, 
+        trials.append(pool.apply_async(run_experiment, 
             (path, config, seed, device, verbose), error_callback=print_error))
     
     return trials
@@ -184,7 +185,7 @@ def launch_experiment_triton(path, name, config, pool, device, verbose):
     trials = []
     for seed in seeds:
         print(f"launching: {name} - seed: {seed}")
-        trials.append(pool.apply_async(run_trail, 
+        trials.append(pool.apply_async(run_experiment, 
             (path, config, seed, device, verbose), error_callback=print_error))
     
     return trials
@@ -197,9 +198,6 @@ def run_experiments(experiments,
                     num_seeds=None, 
                     seeds=None,
                     resources=None):
-
-    # Limit CPU paralellism globally
-    torch.set_num_threads(num_cpus)
 
     # Uses the built-in multiprocessing pool to schedule experiments
     pool = Pool(num_cpus)
@@ -257,9 +255,6 @@ def run_experiments_triton(experiments,
                     seeds=None):
 
     assert seeds is not None, "The triton experiment must run with a seed specified."
-   
-    # Limit CPU paralellism globally
-    torch.set_num_threads(num_cpus)
 
     # Uses the built-in multiprocessing pool to schedule experiments
     pool = Pool(num_cpus)
@@ -276,7 +271,7 @@ def run_experiments_triton(experiments,
         trial.wait()
 
 
-def load_configs(config_files):
+def load_configs(config_files):  # TODO: Add basic config validation and move this to the 'utils' module
     """
     Simple utility for loading a list of config files and combining them into
     a single dictionary. Assumes each file provides a unique experiment name.

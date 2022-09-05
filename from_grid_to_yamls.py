@@ -2,7 +2,7 @@
 import argparse
 
 from interactive_agents.run import load_configs
-from interactive_agents.grid_search import generate_config_files 
+from interactive_agents.util.grid_search import generate_config_files 
 
 
 def parse_args():
