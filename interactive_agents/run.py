@@ -12,9 +12,10 @@ from torch.multiprocessing import Pool
 import traceback
 import yaml
 
-from interactive_agents.util.grid_search import grid_search
+from interactive_agents.grid_search import grid_search
 from interactive_agents.training import get_trainer_class
 
+# NOTE: Can probably combine these into a single method
 def make_unique_dir(path, tag):
     sub_path = os.path.join(path, tag)
     idx = 0
@@ -32,10 +33,20 @@ def make_or_use_dir(path, tag):
         os.makedirs(sub_path)
     return sub_path
 
+# NOTE: We probably don't need to keep this here
 def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
 
 
+class Experiment:
+
+    def __init__(self, config, path, seed):
+        self.config = config
+        self.path = path
+        self.seed = seed
+
+
+# NOTE: Maybe move thse into the 
 def get_stop_conditions(stop):
     max_iterations = stop.pop("iterations", np.infty)
     
@@ -63,7 +74,7 @@ def get_stop_conditions(stop):
     return max_iterations, termination
 
 
-# NOTE: Right now running this method by itself saves no metadata, which isn't ideal (error prone)
+# NOTE: Replace this method 
 def run_experiment(base_path, config, seed, device, verbose):
     path = os.path.join(base_path, f"seed_{seed}")  
     os.makedirs(path)
@@ -119,9 +130,14 @@ def run_experiment(base_path, config, seed, device, verbose):
         torch.jit.save(policy, os.path.join(path, f"{id}.pt"))
 
 
+def prepare_experiments(base_path, name, config):
+    pass
+
+# NOTE: How does this method differ from "launch_experiment_triton"?
 def launch_experiment(path, name, config, pool, device, verbose):
     path = make_unique_dir(path, name)
 
+    # NOTE: on Triton, we only create the config if it doesn't alread exist
     # Save experiment configuration
     with open(os.path.join(path, "config.yaml"), 'w') as config_file:
         yaml.dump({name: config}, config_file)
@@ -137,6 +153,7 @@ def launch_experiment(path, name, config, pool, device, verbose):
     except:
         print("NOTICE: Could not determine current git commit")
 
+    # NOTE: When running on Triton, we save a separate metadata file for each seed
     with open(os.path.join(path, "metadata.yaml"), 'w') as metadata_file:
         yaml.dump(metadata, metadata_file)
 
@@ -190,6 +207,7 @@ def launch_experiment_triton(path, name, config, pool, device, verbose):
     
     return trials
 
+# NOTE: How does this method differ from "run_experiments_triton"?
 def run_experiments(experiments, 
                     base_path, 
                     num_cpus=1,
@@ -197,11 +215,14 @@ def run_experiments(experiments,
                     verbose=False, 
                     num_seeds=None, 
                     seeds=None,
-                    resources=None):
+                    resources=None): # NOTE: The "resources" parameter isn't used anymore
+
+    # NOTE: On triton, it seems we need to pass seeds from the command line, not within the config itself
 
     # Uses the built-in multiprocessing pool to schedule experiments
     pool = Pool(num_cpus)
 
+    # NOTE: The triton run method doesn't use this
     # Convert resource list to dictionary (do not load files yet, let the trainer do that)
     if resources is not None:
         resource_dict = {}  # NOTE: Need two policy maps
@@ -218,21 +239,23 @@ def run_experiments(experiments,
 
     for name, config in experiments.items():
         
+        # NOTE: On Triton we have to pass specific seeds
         # Override seeds with provided seeds
         if num_seeds is not None:
             config["num_seeds"] = num_seeds
         if seeds is not None:
             config["seeds"] = seeds
 
+        # NOTE: Again, on Triton we don't use this, and we won't use it at all going forward
         # Add resource paths to the config  # NOTE: This will fail if we do not specify a trainer config
         config["config"]["resources"] = resources
 
         # Get grid-search variations of config (for hyperparameter tuning)
-        variations = grid_search(name, config)
+        variations = grid_search(name, config)  # NOTE: On Triton we assume variations are pre-generated
 
         if variations is None:
-            trials += launch_experiment(base_path, name, config, pool, device, verbose)
-        else:
+            trials += launch_experiment(base_path, name, config, pool, device, verbose)  # NOTE: Mert uses a separate "launch_experiment_triton" method here
+        else:  # NOTE: This second condition doesn't occur on Triton
             exp_path = make_unique_dir(base_path, name)
 
             # Save base tuning configuration for reference

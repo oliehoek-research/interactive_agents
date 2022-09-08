@@ -1,17 +1,9 @@
 #!/usr/bin/env python3
-"""Use this script to launch experiments locally on your own machine.
+"""Do not run this script manually.
 
-For a complete configuration file (with no "grid_search" keys), this
-script launches a separate process for each random seed specified with
-the "--num-seeds" or "--seeds" arguments, or the seeds specified in the
-config file itself if these arguments are not provided.
-
-For hyperparameter tuning configs (with "grid_search" keys), this script
-launches a separate process for each possible configuration in the grid
-search, and each random seed.
-
-For trainers that accept additional command-line arguments, this script
-will pass any unrecognized arguments to each trainer instance.
+This script is run by the 'train_slurm.sh' sbatch script to launch experiments
+on SLURM clusters.  When run without the '--task' argument, this script just
+returns the number of individual
 """
 import argparse
 import traceback
@@ -81,7 +73,7 @@ if __name__ == '__main__':
     # Launch experiments
     with Pool(args.num_cpus) as pool:
         trials = []
-        for name, config in experiments.items():
+        for name, config in experiments.items():  # NOTE: Experiments should be a list ob objects that can be run
             
             # Override config if random seeds are provided
             if args.num_seeds is not None:

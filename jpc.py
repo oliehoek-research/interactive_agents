@@ -16,6 +16,9 @@ from torch.multiprocessing import Pool
 from interactive_agents.envs import get_env_class
 from interactive_agents.sampling import sample, FrozenPolicy
 
+# TODO: We compute the JPC in several different scripts, would be good to consolidate this implementation
+
+# TODO: This script may be deprecated, compare with the other two JPC scripts
 
 def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)

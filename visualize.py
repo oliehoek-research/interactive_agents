@@ -8,24 +8,25 @@ import yaml
 
 import torch
 
-from interactive_agents.envs import get_env_class, VisualizeGym
+from interactive_agents.envs import get_env_class, VisualizeGym  # NOTE: We don't define a separate "VisualizeGym" class anymore
 from interactive_agents.sampling import FrozenPolicy
 
+# NOTE: How would we support scripted or random polcies?
 
 def parse_args():
-    parser = argparse.ArgumentParser("Visualizes a set of trained policies")
+    parser = argparse.ArgumentParser("Visualizes a set of trained policies")  # NOTE: Again, using this constructor wrong
 
-    parser.add_argument("path", type=str, help="path to directory containing the policy checkpoints")
+    parser.add_argument("path", type=str, help="path to directory containing the policy checkpoints")  # NOTE: Would be nice to draw policies from different populations
     parser.add_argument("-e", "--num-episodes", type=int, default=100,
-                        help="the number of episodes to run (default: 100)")
+                        help="the number of episodes to run (default: 100)")  # NOTE: Number of episodes to run for (mainly for recording, rather than interactive)
     parser.add_argument("-s", "--max-steps", type=int, default=1000,
-                        help="the maximum number of steps per episode (default: 1000)")
+                        help="the maximum number of steps per episode (default: 1000)")  # NOTE: Not all environments define a termination condition
     parser.add_argument("-m", "--map", nargs="+",
-                        help="the mapping from agents to policies")
+                        help="the mapping from agents to policies")  # NOTE: Would be great if we had a different wat to provide this mapping through the command line
     parser.add_argument("--seed", type=int, default=0,
-                        help="the random seed of the training run to load (default: 0)")
+                        help="the random seed of the training run to load (default: 0)")  # NOTE: Would be nice to compare different random seeds as well
     parser.add_argument("-r", "--record", type=str,
-                        help="the path to save recorded videos (no recording if not provided)")
+                        help="the path to save recorded videos (no recording if not provided)")  # NOTE: Make sure recording works
     parser.add_argument("--headless", action="store_true",
                         help="do not display visualization (record only in headless environments)")
     parser.add_argument("--speed", type=float, default=1,
@@ -34,7 +35,7 @@ def parse_args():
     return parser.parse_args()
 
 
-# TODO: Move policy loading code to the main library, so we don't need to reproduce it for every 
+# TODO: Move policy loading code to the main library, so we don't need to reproduce it for every script
 def load_experiment(path, seed, policy_map):
     policies = {}
     config_path = os.path.join(path, "config.yaml")
@@ -109,7 +110,7 @@ if __name__ == '__main__':
 
     # If environment doesn't support visualization, wrap with gym visualizer
     if not hasattr(env, "visualize"):
-        if isinstance(env, gym.Env):
+        if isinstance(env, gym.Env):  # NOTE: Gyme environment wrapper now supports visualization directly
             env = VisualizeGym(env)
         else:
             raise NotImplementedError("Environment does not support visualization")

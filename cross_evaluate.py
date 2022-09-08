@@ -16,12 +16,13 @@ from torch.multiprocessing import Pool
 from interactive_agents.envs import get_env_class
 from interactive_agents.sampling import sample, FrozenPolicy
 
+# NOTE: Does this analyze regret?
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__)
 
     parser.add_argument("path", nargs="+", type=str, 
-                        help="paths to the directories containing learned policies")
+                        help="paths to the directories containing learned policies")  # NOTE: Allows multiple experiments to be specified (what happens if we just give one?)
     
     parser.add_argument("-n", "--num-cpus", type=int, default=1,
                         help="the number of parallel worker processes to launch")
@@ -29,14 +30,14 @@ def parse_args():
                         help="the number of episodes to run for each policy combination")
 
     parser.add_argument("-m", "--mapping", nargs="+",
-                        help="mapping from agent IDs to policy names (agent_id policy_name agent_id policy_name ...)")
+                        help="mapping from agent IDs to policy names (agent_id policy_name agent_id policy_name ...)")  # NOTE: Again, new mapping approach would be good
     parser.add_argument("-a", "--adversaries", nargs="+",
                         help="list of agent IDs corresponding to the 'adversary' team of agents, for games with >2 players")
 
     return parser.parse_args()
 
 
-def parse_map(map_spec):
+def parse_map(map_spec):  # NOTE: We could share this across scripts
     map = {}
     for idx in range(0, len(map_spec), 2):
         agent_id = map_spec[idx]
@@ -45,7 +46,7 @@ def parse_map(map_spec):
         
     return map
 
-
+# NOTE: This just grabs the environment information from the experiment config, could be moved into an experiment loading class
 def load_config(path):
     if not os.path.isfile(path):
         raise ValueError(f"Config File '{path}' does not exist")
@@ -53,7 +54,7 @@ def load_config(path):
     with open(path, "r") as f:
         config = yaml.load(f, Loader=yaml.FullLoader)
 
-    if "trainer" not in config:
+    if "trainer" not in config:  # NOTE: The bulk of the relevant configuration information is stored in the trainer sub-configuration
         config = list(config.values())[0]
 
     trainer_config = config.get("config", {})
@@ -68,7 +69,7 @@ def load_config(path):
 
     return env_cls, env_config, max_steps
 
-
+# NOTE: Loads all policies for all seeds and all agents defined by the policy map
 def load_policies(path, policy_map):
     policies = defaultdict(dict)
 
@@ -83,13 +84,13 @@ def load_policies(path, policy_map):
                 for agent_id, policy_id in policy_map.items():
                     policy_path = os.path.join(seed_path, f"{policy_id}.pt")
 
-                    if os.path.isfile(policy_path):
+                    if os.path.isfile(policy_path):  # NOTE: Just skips policies that don't exist, no error thrown
                         model = torch.jit.load(policy_path)
                         policies[seed][agent_id] = model
     
     return policies
 
-
+# NOTE: Loads the list of dictionaries with the same set of policies for different seeds
 def select_models(population, agent_ids):
     policies = []
     for seed in population.values():
@@ -101,7 +102,7 @@ def select_models(population, agent_ids):
     
     return policies
 
-
+# NOTE: Just deserializes the policies and calls the "sample" method to collect data
 def evaluate(env_cls, 
              env_config, 
              models, 
@@ -123,12 +124,12 @@ def evaluate(env_cls,
     batch = sample(env, policies, num_episodes, max_steps)
     return batch.statistics()
 
-
+# NOTE: We reuse this a lot
 def print_error(error):
     """Error callback for python multiprocessing"""
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
 
-
+# NOTE: Computes an asymmetric evaluation matrix - can we share this across scripts at some point?
 def jpc(eval_policies,
         target_policies,
         env_cls, 
@@ -185,10 +186,10 @@ def jpc(eval_policies,
     return jpc
 
 
-def cross_evaluate(eval_path, 
-                   target_path, 
+def cross_evaluate(eval_path, # NOTE: This is the data for the experiments we are trying to evaluate
+                   target_path,  # NOTE: This is the self-play population we are comparing against
                    eval_map_spec, 
-                   adversaries, 
+                   adversaries,  # NOTE: When there are more than two agents, allows us to divide agents into teams (do our trainers support this?)
                    num_episodes,
                    num_cpus):
 
@@ -201,7 +202,7 @@ def cross_evaluate(eval_path,
     target_map = {id:id for id in env.possible_agents}
 
     if eval_map_spec is not None:
-        eval_map = parse_map(eval_map_spec)
+        eval_map = parse_map(eval_map_spec)  # NOTE: Allows us to specify a custom policy mapping
     else:
         eval_map = target_map
     
@@ -225,6 +226,7 @@ def cross_evaluate(eval_path,
 
     print(f"Evaluating Policies with {args.num_cpus} processes")
 
+    # NOTE: We generate two entire JPCs, which may not be necessary (only use the diagonals)
     # Generate cross-play JPC matrix
     cross_play = jpc(select_models(eval_policies, agents), 
                      select_models(target_policies, adversaries),
@@ -250,7 +252,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     # Limit CPU paralellism for policy inference
-    torch.set_num_threads(args.num_cpus)
+    torch.set_num_threads(args.num_cpus)  # NOTE: Again, probably not being respected
 
     eval_path = args.path[0]
     target_path = args.path[1] if len(args.path) > 1 else eval_path
@@ -266,7 +268,7 @@ if __name__ == '__main__':
     print(cross_play)
 
     print("\nSelf-Play Values:")
-    print(np.diag(self_play))
+    print(np.diag(self_play))  # NOTE: Only use the diagonals
 
     regrets = np.diag(self_play) - cross_play
 
@@ -275,3 +277,5 @@ if __name__ == '__main__':
     print(f"min reward: {cross_play.min(axis=1).mean()}")
     print(f"mean regret: {regrets.mean()}")
     print(f"max regret: {regrets.max(axis=1).mean()}") 
+
+    # NOTE: Doesn't save any data, which might be useful
