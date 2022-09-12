@@ -8,7 +8,7 @@ import torch
 from interactive_agents.envs import get_env_class
 from interactive_agents.training.learners import get_learner_class
 from interactive_agents.sampling import sample, FrozenPolicy, Batch
-from interactive_agents.util.stopwatch import Stopwatch
+from interactive_agents.stopwatch import Stopwatch
 
 
 class SelfPlayTrainer:

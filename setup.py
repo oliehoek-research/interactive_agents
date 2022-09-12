@@ -17,9 +17,9 @@ setup(name='interactive_agents',
             "protobuf==3.19.4",  # What did we need this for (we never import it ourselves)? - is this specific version important?
             "pyglet==1.5.15",  # We only need this for certain visualizations
             "PyYAML==6.0",
-            "scipy==1.7.2",
+            "scipy==1.9.0",
             "SuperSuit==3.3.5",
             "tensorboardX==2.5",
-            "torch==1.11.0"
+            "torch==1.12.1"
       ]
 )

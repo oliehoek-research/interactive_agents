@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """Use this script to launch experiments locally on your own machine.
 
 For a complete configuration file (with no "grid_search" keys), this
@@ -18,32 +17,11 @@ import traceback
 
 import torch
 from torch.multiprocessing import Pool
-# from multiprocessing import Pool
 
-from interactive_agents.run import load_configs, run_experiment
-from interactive_agents.util import grid_search, make_experiment_dir, load_configs
+from interactive_agents import load_configs, run_trial, setup_experiments
 
 def print_error(error):
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
-
-
-def launch_experiment(path, name, config, pool, device, verbose):
-
-    # Create expriment directory
-    path = make_experiment_dir(path, name, config) 
-
-    # Get random seeds
-    num_seeds = config.get("num_seeds", 1)
-    seeds = config.get("seeds", list(range(num_seeds)))
-
-    # Launch trials
-    trials = []
-    for seed in seeds:
-        print(f"launching: {name} - seed: {seed}")
-        trials.append(pool.apply_async(run_experiment, 
-            (path, config, seed, device, verbose), error_callback=print_error))
-    
-    return trials
 
 
 def parse_args():
@@ -78,36 +56,31 @@ if __name__ == '__main__':
     device = "cuda" if args.gpu else "cpu"
     print(f"Training with Torch device '{device}'")
 
-    # Limit torch CPU parallelism  # NOTE: Eventually we might want to assign multiple worker processes to each experiment
-    torch.set_num_threads(1)
+    # Override config if random seeds are provided
+    for name, config in experiments.items():
+        if args.num_seeds is not None:
+            config["num_seeds"] = args.num_seeds
+
+        if args.seeds is not None:
+            config["seeds"] = args.seeds
+            
+        # Add custom arguments to config
+        config["arguments"] = unknown
+
+    # Setup experiment
+    trial_configs = setup_experiments(experiments, args.output_path, use_existing=False)
+
+    # Limit Torch CPU parallelism  # NOTE: This must be set BEFORE we initialize the process pool
     torch.set_num_interop_threads(1)
+    torch.set_num_threads(1)
 
     # Launch experiments
     with Pool(args.num_cpus) as pool:
         trials = []
-        for name, config in experiments.items():
+        for trial in trial_configs:
+            trials.append(pool.apply_async(run_trial, (trial,),
+                {"device": device, "verbose": args.verbose}, error_callback=print_error))
             
-            # Override config if random seeds are provided
-            if args.num_seeds is not None:
-                config["num_seeds"] = args.num_seeds
-
-            if args.seeds is not None:
-                config["seeds"] = args.seeds
-            
-            # Add custom arguments to config
-            config["arguments"] = unknown
-
-            # Get grid-search variations (for hyperparameter tuning)
-            variations = grid_search(name, config)  # TODO: Expose grid-search method
-
-            if variations is None:
-                trials += launch_experiment(args.output_path, name, config, pool, device, args.verbose)
-            else:
-                exp_path = make_experiment_dir(args.output_path, name)
-
-                for var_name, var_config in variations.items():
-                    trials += launch_experiment(exp_path, var_name, var_config, pool, device, args.verbose)
-
-        # Wait for trails to complete before returning
+        # Wait for all trails to complete before returning
         for trial in trials:
             trial.wait()
