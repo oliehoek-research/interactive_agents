@@ -1,41 +1,19 @@
-#!/usr/bin/env python3
 """Do not run this script manually.
 
-This script is run by the 'train_slurm.sh' sbatch script to launch experiments
-on SLURM clusters.  When run without the '--task' argument, this script just
-returns the number of individual
+This script is run by the sbatch scripts
+    
+    'train_slurm_local.sh'
+    'train_slurm_delft.sh' 
+
+to launch experiments on SLURM clusters.  When run with the
+'--setup' flag, this script just sets up the required directory
+structure, and prints the number of individual trials to run.
 """
 import argparse
-import traceback
-
+import os
 import torch
-from torch.multiprocessing import Pool
-# from multiprocessing import Pool
 
-from interactive_agents.run import load_configs, run_experiment
-from interactive_agents.util import grid_search, make_experiment_dir, load_configs
-
-def print_error(error):
-    traceback.print_exception(type(error), error, error.__traceback__, limit=5)
-
-
-def launch_experiment(path, name, config, pool, device, verbose):
-
-    # Create expriment directory
-    path = make_experiment_dir(path, name, config) 
-
-    # Get random seeds
-    num_seeds = config.get("num_seeds", 1)
-    seeds = config.get("seeds", list(range(num_seeds)))
-
-    # Launch trials
-    trials = []
-    for seed in seeds:
-        print(f"launching: {name} - seed: {seed}")
-        trials.append(pool.apply_async(run_experiment, 
-            (path, config, seed, device, verbose), error_callback=print_error))
-    
-    return trials
+from interactive_agents import load_configs, run_trial, setup_experiments
 
 
 def parse_args():
@@ -46,6 +24,8 @@ def parse_args():
                         help="provide one or more experiment config files")
     parser.add_argument("-o", "--output-path", type=str, default="results/debug",
                         help="directory in which we should save results")
+    parser.add_argument("-g", "--gpu", action="store_true",
+                        help="enable GPU acceleration if available")
     parser.add_argument("-v", "--verbose", action="store_true",
                         help="print data for every training iteration")
     parser.add_argument("--num-seeds", type=int,
@@ -53,6 +33,9 @@ def parse_args():
     parser.add_argument("--seeds", type=int, nargs="+",
                         help="a list of random seeds to run, overrides values from the config file")
 
+    parser.add_argument("--setup", action="store_true",
+                        help="just setup the directory structure, run no experiments")
+    
     return parser.parse_known_args()
 
 
@@ -62,40 +45,38 @@ if __name__ == '__main__':
     # Load configuration files
     experiments = load_configs(args.config_files)
 
-    # Select torch device  # NOTE: How would this handle multi-GPU machines?
-    device = "cuda" if args.gpu else "cpu"
-    print(f"Training with Torch device '{device}'")
+    # Override config if random seeds are provided
+    for name, config in experiments.items():
+        if args.num_seeds is not None:
+            config["num_seeds"] = args.num_seeds
 
-    # Limit torch CPU parallelism  # NOTE: Eventually we might want to assign multiple worker processes to each experiment
-    torch.set_num_threads(1)
-    torch.set_num_interop_threads(1)
-
-    # Launch experiments
-    with Pool(args.num_cpus) as pool:
-        trials = []
-        for name, config in experiments.items():  # NOTE: Experiments should be a list ob objects that can be run
+        if args.seeds is not None:
+            config["seeds"] = args.seeds
             
-            # Override config if random seeds are provided
-            if args.num_seeds is not None:
-                config["num_seeds"] = args.num_seeds
+        # Add custom arguments to config
+        config["arguments"] = unknown
 
-            if args.seeds is not None:
-                config["seeds"] = args.seeds
-            
-            # Add custom arguments to config
-            config["arguments"] = unknown
+    # Setup experiment
+    trial_configs = setup_experiments(experiments, args.output_path, use_existing=True)
 
-            # Get grid-search variations (for hyperparameter tuning)
-            variations = grid_search(name, config)  # TODO: Expose grid-search method
+    if args.setup:
+        print(len(trial_configs))
+    else:
 
-            if variations is None:
-                trials += launch_experiment(args.output_path, name, config, pool, device, args.verbose)
-            else:
-                exp_path = make_experiment_dir(args.output_path, name)
+        # Select torch device  # NOTE: How would this handle multi-GPU machines?
+        device = "cuda" if args.gpu else "cpu"
+        print(f"Training with Torch device '{device}'")
 
-                for var_name, var_config in variations.items():
-                    trials += launch_experiment(exp_path, var_name, var_config, pool, device, args.verbose)
+        # Limit Torch CPU parallelism
+        torch.set_num_interop_threads(1)
+        torch.set_num_threads(1)
 
-        # Wait for trails to complete before returning
-        for trial in trials:
-            trial.wait()
+        # Get target trial config from SLURM task ID variable
+        task_id = os.environ.get("SLURM_ARRAY_TASK_ID", None)
+        try:
+            trial = trial_configs[int(task_id)]
+        except ValueError:
+            raise ValueError(f"Invalid SLURM task ID '{task_id}'")
+
+        # Run Trial
+        run_trial(trial, device=device, verbose=args.verbose)

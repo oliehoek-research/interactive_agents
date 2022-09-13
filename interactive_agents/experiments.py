@@ -70,10 +70,10 @@ def setup_experiment(output_path, name, config, use_existing):
     path = get_directory(output_path, name, use_existing)
 
     # Save experiment configuration
-    save_config(output_path, name, config, use_existing=True)
+    save_config(path, name, config, use_existing)
 
     # Save experiment-wide metadata
-    save_metadata(output_path, use_existing=True)
+    save_metadata(path, use_existing)
 
     # Get random seeds
     num_seeds = config.get("num_seeds", 1)
@@ -95,7 +95,7 @@ def setup_experiments(experiments, output_path, use_existing=False):
             path = get_directory(output_path, name)
 
             # NOTE: Save most recent grid-search config
-            save_config(output_path, name, config, use_existing=False)
+            save_config(path, name, config, use_existing=True)
 
             for var_name, var_config in variations.items():
                 trials +=setup_experiment(path, var_name, var_config, use_existing=True)
