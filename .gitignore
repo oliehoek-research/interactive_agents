@@ -137,3 +137,4 @@ wandb
 
 # Container images
 singularity_image.sif
+images/
