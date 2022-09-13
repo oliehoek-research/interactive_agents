@@ -1,0 +1,43 @@
+r2d2_meta_learning_coordination_10_32_tune:
+  stop:
+      iterations: 500
+  trainer: independent
+  num_seeds: 8
+  config:
+    max_steps: 100
+    iteration_episodes: 32
+    eval_iterations: 10
+    eval_episodes: 64
+    env: coordination
+    env_config:
+      stages: 32
+      actions: 10
+      players: 2
+      meta_learning: True
+    learner: R2D2
+    learner_config:
+      num_batches: 16
+      batch_size: 32
+      sync_iterations:
+        grid_search: [10, 20]
+      learning_starts: 20
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 250
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta:
+        grid_search: [0.1, 0.5, 0.9]
+      replay_beta_iterations: 250
+      buffer_size:
+        grid_search: [8192, 16384]
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 64
+        hidden_layers: 1
+      lr: 
+        grid_search: [0.001, 0.01]
