@@ -4,7 +4,8 @@ This script does not need to be run within a singularity container,
 and only imports modules from the python standard library.
 
 This script accepts all of the arguments that "train_local.py" does,
-except for the "--gpu" flag, since GPU allocation is not yet supported.
+except for the "--num-cpus" argument (use "--cpus-per-task" instead) and
+the "--gpu" flag, since GPU allocation is not yet supported by our code.
 This script also allows us to specify a Singulrity image in which to
 run experiments, and specify the details of the SLURM resource allocation
 for each job.  Any unrecognized keyword arguments will be passed to the
@@ -55,7 +56,7 @@ if __name__ == '__main__':
 
     # Initialize directory structure and get the number of jobs to run
     setup_command = run_command + ["--setup"]
-    setup_process = subprocess.run(setup_command, capture_output=True)
+    setup_process = subprocess.run(setup_command, capture_output=subprocess.PIPE)
     num_tasks = int(setup_process.stdout)
 
     # Launch SLURM job array to run experiments

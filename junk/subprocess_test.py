@@ -22,7 +22,7 @@ if __name__ == '__main__':
         print(f"running task {args.task}")
     else:
         setup_command = ["python3", "subprocess_test.py", "--setup"]
-        setup_process = subprocess.run(setup_command, capture_output=True)
+        setup_process = subprocess.run(setup_command, capture_output=subprocess.PIPE)
         
         num_tasks = int(setup_process.stdout)
         for task in range(num_tasks):
