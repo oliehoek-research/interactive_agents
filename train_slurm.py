@@ -23,10 +23,8 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, 
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument("-i", "--image", type=str, default="./singularity_image.sif",
+    parser.add_argument("-i", "--image", type=str, default="~/singularity_image.sif",
                         help="singularity image in which to run experiments")
-    parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
-                        help="directory in which we should save results")
     parser.add_argument("-p", "--partition", type=str, default="influence",
                         help="name of SLURM partition to use")
     parser.add_argument("-q", "--qos", type=str, default="short",
@@ -39,6 +37,11 @@ def parse_args():
                         help="memory per SLURM CPU")
     parser.add_argument("--job-name", type=str, default="Ad-Hoc_Cooperation",
                         help="SLURM job name")
+    parser.add_argument("--slurm-output", type=str, default=r"~/slurm_output/slurm_%A_%a.out",
+                        help="SLURM job name")
+
+    parser.add_argument("-o", "--output-path", type=str, default="~/results/debug",
+                        help="directory in which we should save results (will be mounted in each Singulairty container)")
     
     return parser.parse_known_args()
 
@@ -76,7 +79,8 @@ if __name__ == '__main__':
         f"--time={args.time}",
         f"--cpus-per-task={args.cpus_per_task}",
         f"--mem-per-cpu={args.mem_per_cpu}",
-        f"--job-name={args.job_name}"
+        f"--job-name={args.job_name}",
+        f"--output={args.slurm_output}"
     ])
     slurm_command.append(f"--array=0-{num_tasks - 1}")
     slurm_command.append("--wrap")
