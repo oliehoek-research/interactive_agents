@@ -51,7 +51,7 @@ if __name__ == '__main__':
         "singularity", 
         "exec",
         "--bind",
-        f"'{args.output_path}':/mnt/output",
+        f"{args.output_path}:/mnt/output",
         args.image, 
         "python3", 
         "run_slurm.py",
