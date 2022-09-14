@@ -37,7 +37,7 @@ def parse_args():
                         help="memory per SLURM CPU")
     parser.add_argument("--job-name", type=str, default="Ad-Hoc_Cooperation",
                         help="SLURM job name")
-    parser.add_argument("--slurm-output", type=str, default=r"~/slurm_output/slurm_%A_%a.out",
+    parser.add_argument("--slurm-output", type=str, default=r"./slurm_output/%x_%j_%a.out",
                         help="SLURM job name")
 
     parser.add_argument("-o", "--output-path", type=str, default="~/results/debug",
