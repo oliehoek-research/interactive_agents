@@ -1,82 +1,77 @@
-"""Do not run this script manually.
+"""Use this script to launch experiments on a SLURM cluster.
 
-This script is run by the sbatch scripts
-    
-    'train_slurm_local.sh'
-    'train_slurm_delft.sh' 
+This script does not need to be run within a singularity container,
+and only imports modules from the python standard library.
 
-to launch experiments on SLURM clusters.  When run with the
-'--setup' flag, this script just sets up the required directory
-structure, and prints the number of individual trials to run.
+This script accepts all of the arguments that "train_local.py" does,
+except for the "--gpu" flag, since GPU allocation is not yet supported.
+This script also allows us to specify a Singulrity image in which to
+run experiments, and specify the details of the SLURM resource allocation
+for each job.  Any unrecognized keyword arguments will be passed to the
+trainer clases (to support algorithm-specific arguments).
+
+The script will run singulraity locally (on the login node)
+to setup the directory structure for the experiments, and then launch a
+SLURM job array with a job for each configuration and seed.  This script
+runs the "run_slurm.py" script, which should never be launched manually.
 """
 import argparse
-import os
-import torch
-
-from interactive_agents import load_configs, run_trial, setup_experiments
-
+import subprocess
 
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, 
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument("config_files", type=str, nargs="+",
-                        help="provide one or more experiment config files")
-    parser.add_argument("-o", "--output-path", type=str, default="results/debug",
-                        help="directory in which we should save results")
-    parser.add_argument("-g", "--gpu", action="store_true",
-                        help="enable GPU acceleration if available")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="print data for every training iteration")
-    parser.add_argument("--num-seeds", type=int,
-                        help="the number of random seeds to run, overrides values from the config file")
-    parser.add_argument("--seeds", type=int, nargs="+",
-                        help="a list of random seeds to run, overrides values from the config file")
-
-    parser.add_argument("--setup", action="store_true",
-                        help="just setup the directory structure, run no experiments")
+    parser.add_argument("-i", "--image", type=str, default="./singularity_image.sif",
+                        help="singularity image in which to run experiments")
+    parser.add_argument("-p", "--partition", type=str, default="influence",
+                        help="name of SLURM partition to use")
+    parser.add_argument("-q", "--qos", type=str, default="short",
+                        help="SLURM qos to use")
+    parser.add_argument("-t", "--time", type=str, default="1:00:00",
+                        help="SLURM time limit per job")
+    parser.add_argument("-c", "--cpus-per-task", type=str, default="1",
+                        help="CPUs per SLURM task")
+    parser.add_argument("-m", "--mem-per-cpu", type=str, default="512M",
+                        help="memory per SLURM CPU")
+    parser.add_argument("--job-name", type=str, default="Ad-Hoc_Cooperation",
+                        help="SLURM job name")
     
     return parser.parse_known_args()
 
 
 if __name__ == '__main__':
     args, unknown = parse_args()
+    
+    # Wrap python arguments in single quotes
+    python_args = [f"'{arg}'" for arg in unknown]
 
-    # Load configuration files
-    experiments = load_configs(args.config_files)
+    # Wrap Singularity image path in single quotes
+    image = f"'{args.image}'"
 
-    # Override config if random seeds are provided
-    for name, config in experiments.items():
-        if args.num_seeds is not None:
-            config["num_seeds"] = args.num_seeds
+    # Construct base python command
+    run_command = ["singularity", "exec", image, "python3", "run_slurm.py"]
+    run_command.extend(python_args)
 
-        if args.seeds is not None:
-            config["seeds"] = args.seeds
-            
-        # Add custom arguments to config
-        config["arguments"] = unknown
+    # Initialize directory structure and get the number of jobs to run
+    setup_command = run_command + ["--setup"]
+    setup_process = subprocess.run(setup_command, capture_output=True)
+    num_tasks = int(setup_process.stdout)
 
-    # Setup experiment
-    trial_configs = setup_experiments(experiments, args.output_path, use_existing=True)
+    # Launch SLURM job array to run experiments
+    slurm_command = ["sbatch"]
+    slurm_command.extend([
+        f"--partition={args.partition}",
+        f"--qos={args.qos}",
+        f"--time={args.time}",
+        f"--cpus-per-task={args.cpus_per_task}",
+        f"--mem-per-cpu={args.mem_per_cpu}",
+        f"--job-name={args.job_name}"
+    ])
+    slurm_command.append(f"--array=0-{num_tasks - 1}")
+    slurm_command.append("--wrap")
+    
+    train_command = " ".join(run_command)
+    slurm_command.append(f'"{train_command}"')
 
-    if args.setup:
-        print(len(trial_configs))
-    else:
-
-        # Select torch device  # NOTE: How would this handle multi-GPU machines?
-        device = "cuda" if args.gpu else "cpu"
-        print(f"Training with Torch device '{device}'")
-
-        # Limit Torch CPU parallelism
-        torch.set_num_interop_threads(1)
-        torch.set_num_threads(1)
-
-        # Get target trial config from SLURM task ID variable
-        task_id = os.environ.get("SLURM_ARRAY_TASK_ID", None)
-        try:
-            trial = trial_configs[int(task_id)]
-        except ValueError:
-            raise ValueError(f"Invalid SLURM task ID '{task_id}'")
-
-        # Run Trial
-        run_trial(trial, device=device, verbose=args.verbose)
+    subprocess.run(slurm_command)

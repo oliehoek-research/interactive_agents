@@ -12,6 +12,6 @@ sbatch --partition=influence \
     --time=0:10:00 \
     --cpus-per-task=1 \
     --mem-per-cpu=512M \
-    --job-name="Ad-Hoc_Cooperation" \
+    --job-name=Ad-Hoc_Cooperation \
     --array=0-${ARRAY_MAX} \
     --wrap "singularity exec ${IMAGE} python3 train_slurm.py ${CONFIG_FILE} -o ${OUTPUT_PATH} ${FLAGS}"
