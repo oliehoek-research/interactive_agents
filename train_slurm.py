@@ -25,6 +25,8 @@ def parse_args():
 
     parser.add_argument("-i", "--image", type=str, default="./singularity_image.sif",
                         help="singularity image in which to run experiments")
+    parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
+                        help="directory in which we should save results")
     parser.add_argument("-p", "--partition", type=str, default="influence",
                         help="name of SLURM partition to use")
     parser.add_argument("-q", "--qos", type=str, default="short",
@@ -43,9 +45,18 @@ def parse_args():
 
 if __name__ == '__main__':
     args, unknown = parse_args()
-    
+
     # Contruct base Singularity command
-    command = ["singularity", "exec", args.image, "python3", "run_slurm.py"]
+    command = [
+        "singularity", 
+        "exec",
+        "--bind",
+        f"'{args.output_path}':/mnt/output",
+        args.image, 
+        "python3", 
+        "run_slurm.py",
+        "--output-path",
+        "/mnt/output"]
     command.extend(unknown)
 
     # Initialize directory structure and get the number of jobs to run
