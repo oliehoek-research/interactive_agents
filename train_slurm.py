@@ -44,20 +44,18 @@ def parse_args():
 if __name__ == '__main__':
     args, unknown = parse_args()
     
-    # Wrap python arguments in single quotes
-    python_args = [f"'{arg}'" for arg in unknown]
-
-    # Wrap Singularity image path in single quotes
-    image = f"'{args.image}'"
-
-    # Construct base python command
-    run_command = ["singularity", "exec", image, "python3", "run_slurm.py"]
-    run_command.extend(python_args)
+    # Contruct base Singularity command
+    command = ["singularity", "exec", args.image, "python3", "run_slurm.py"]
+    command.extend(unknown)
 
     # Initialize directory structure and get the number of jobs to run
-    setup_command = run_command + ["--setup"]
+    setup_command = command + ["--setup"]
     setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
     num_tasks = int(setup_process.stdout)
+
+    # Join Singularity command into a single string
+    command = [f'"{token}"' for token in command]
+    command = " ".join(command)
 
     # Launch SLURM job array to run experiments
     slurm_command = ["sbatch"]
@@ -71,8 +69,6 @@ if __name__ == '__main__':
     ])
     slurm_command.append(f"--array=0-{num_tasks - 1}")
     slurm_command.append("--wrap")
-    
-    train_command = " ".join(run_command)
-    slurm_command.append(f'"{train_command}"')
+    slurm_command.append(command)
 
     subprocess.run(slurm_command)
