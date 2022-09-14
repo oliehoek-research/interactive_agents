@@ -92,12 +92,9 @@ def setup_experiments(experiments, output_path, use_existing=False):
         if variations is None:
             trials += setup_experiment(output_path, name, config, use_existing)
         else:
-            path = get_directory(output_path, name)
-
-            # NOTE: Save most recent grid-search config
-            save_config(path, name, config, use_existing=True)
+            path = get_directory(output_path, name, use_existing)
 
             for var_name, var_config in variations.items():
-                trials +=setup_experiment(path, var_name, var_config, use_existing=True)
+                trials += setup_experiment(path, var_name, var_config, use_existing=True)
 
     return trials
