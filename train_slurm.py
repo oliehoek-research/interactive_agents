@@ -56,7 +56,7 @@ if __name__ == '__main__':
 
     # Initialize directory structure and get the number of jobs to run
     setup_command = run_command + ["--setup"]
-    setup_process = subprocess.run(setup_command, capture_output=subprocess.PIPE)
+    setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
     num_tasks = int(setup_process.stdout)
 
     # Launch SLURM job array to run experiments
