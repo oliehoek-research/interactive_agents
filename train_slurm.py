@@ -23,7 +23,7 @@ def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, 
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
 
-    parser.add_argument("-i", "--image", type=str, default="~/singularity_image.sif",
+    parser.add_argument("-i", "--image", type=str, default="./singularity_image.sif",
                         help="singularity image in which to run experiments")
     parser.add_argument("-p", "--partition", type=str, default="influence",
                         help="name of SLURM partition to use")
@@ -37,10 +37,12 @@ def parse_args():
                         help="memory per SLURM CPU")
     parser.add_argument("--job-name", type=str, default="Ad-Hoc_Cooperation",
                         help="SLURM job name")
-    parser.add_argument("--slurm-output", type=str, default=r"./slurm_output/%x_%j_%a.out",
+    parser.add_argument("--slurm-output", type=str, default=r"./results/slurm_output/%x_%j_%a.out",
                         help="SLURM job name")
+    parser.add_argument("--max-tasks", type=int, default=20,
+                        help="maximum number of SLURM tasks allowed to run in parallel")
 
-    parser.add_argument("-o", "--output-path", type=str, default="~/results/debug",
+    parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
                         help="directory in which we should save results (will be mounted in each Singulairty container)")
     
     return parser.parse_known_args()
@@ -82,7 +84,7 @@ if __name__ == '__main__':
         f"--job-name={args.job_name}",
         f"--output={args.slurm_output}"
     ])
-    slurm_command.append(f"--array=0-{num_tasks - 1}")
+    slurm_command.append(f"--array=0-{num_tasks - 1}%{args.max_tasks}")
     slurm_command.append("--wrap")
     slurm_command.append(command)
 
