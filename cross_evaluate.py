@@ -254,9 +254,11 @@ if __name__ == '__main__':
     # Limit CPU paralellism for policy inference
     torch.set_num_threads(args.num_cpus)  # NOTE: Again, probably not being respected
 
+    # NOTE: We could use two different keyword arguments for this
     eval_path = args.path[0]
-    target_path = args.path[1] if len(args.path) > 1 else eval_path
+    target_path = args.path[1] if len(args.path) > 1 else eval_path  # NOTE: If no second path is provided, we evaluate the population against itself
 
+    # NOTE: This seems to be where the magic happens - seems to output two eval matrices
     cross_play, self_play = cross_evaluate(eval_path, 
                                            target_path, 
                                            args.mapping, 
@@ -265,12 +267,12 @@ if __name__ == '__main__':
                                            args.num_cpus)
 
     print("\nCross-Play Matrix:")
-    print(cross_play)
+    print(cross_play)  # NOTE: This is eval X target - eval agents paired with target agents
 
-    print("\nSelf-Play Values:")
-    print(np.diag(self_play))  # NOTE: Only use the diagonals
+    print("\nSelf-Play Values:")  # NOTE: This is the standard JPC matrix, for the target population
+    print(np.diag(self_play))  # NOTE: Only use the diagonals, wasting time computing the rest of the JPC
 
-    regrets = np.diag(self_play) - cross_play
+    regrets = np.diag(self_play) - cross_play  # NOTE: This is the true regret for each eval agent w.r.t. each target agent
 
     print("\nStatistics:")
     print(f"mean reward: {cross_play.mean()}")

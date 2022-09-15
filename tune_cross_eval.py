@@ -1,4 +1,10 @@
-"""Selects the best configuration(s) from a hyperparameter sweep.
+"""Selects the best configuration(s) from a sweep relative to a fixed population.
+
+Takes two directory paths as input.  The first path contains the experiments
+corresponding to the hyperparameter sweep.  The second path contains a single
+experiment from which a base population of partners is to be loaded.
+
+This script can optmize on any statistic returned by the sampling
 
 Given a directory containing multiple experiments with different configurations,
 this script selects the configuration (or configurations if there is a tie) that
@@ -25,21 +31,44 @@ class Configuration:
         self.runs = []
 
 
+# NOTE: We can probably load the cross-eval script directly, rather than replicating its functionality
 def parse_args():
     parser = argparse.ArgumentParser(description=__doc__, 
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     
-    parser.add_argument("path", type=str, help="path to directory containing training results")
+    parser.add_argument("sweep_path", type=str, 
+        help="path to hyperparameter sweep")
+    parser.add_argument("target_path", type=str, 
+        help="path to the target population")
+    
+    parser.add_argument("-n", "--num-cpus", type=int, default=1,
+        help="the number of parallel worker processes to launch")
+    parser.add_argument("-e", "--num-episodes", type=int, default=100,
+        help="the number of episodes to run for each policy combination")
+    parser.add_argument("-m", "--mapping", nargs="+",
+        help="mapping from agent IDs to policy names (agent_id policy_name agent_id policy_name ...)")
+    parser.add_argument("-a", "--adversaries", nargs="+",
+        help="list of agent IDs corresponding to the 'adversary' team of agents, for games with >2 players")
     parser.add_argument("-l", "--loss", type=str, default="eval/reward_mean", 
-        help="key of the metric to minimize (or maximize)")
-    parser.add_argument("-a", "--accumulate", type=str, default="max", 
-        help="method for reducing the time series into a scalar ['mean','max','min']")
-    parser.add_argument("-m", "--mode", type=str, default="max",
+        help="key of the metric to minimize (or maximize)")  # NOTE: We are always interested in reward, now the question is which cross-eval statistics do we want?
+    parser.add_argument("-a", "--accumulate", type=str, default="mean", 
+        help="method for reducing performance across the population scalar ['mean','max','min']")
+    parser.add_argument("--mode", type=str, default="max",
         help="whether to maximize or minimize the given key ['max','min']")
     parser.add_argument("-v", "--verbose", action="store_true",
         help="print results for every configuration")
     
     return parser.parse_args()
+
+
+def parse_map(map_spec):  # NOTE: We could share this across scripts
+    map = {}
+    for idx in range(0, len(map_spec), 2):
+        agent_id = map_spec[idx]
+        policy_id = map_spec[idx + 1]
+        map[agent_id] = policy_id
+        
+    return map
 
 
 def load_runs(path, loss, accumulate):
