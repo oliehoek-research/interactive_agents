@@ -32,8 +32,7 @@ def parse_args():
                         help="provide one or more experiment config files")
     parser.add_argument("-o", "--output-path", type=str, default="results/debug",
                         help="directory in which we should save results")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="print data for every training iteration")
+
     parser.add_argument("--num-seeds", type=int,
                         help="the number of random seeds to run, overrides values from the config file")
     parser.add_argument("--seeds", type=int, nargs="+",
@@ -43,6 +42,11 @@ def parse_args():
                         help="the number of parallel experiments to launch")
     parser.add_argument("-g", "--gpu", action="store_true",
                         help="enable GPU acceleration if available")
+
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print data for every training iteration")
+    parser.add_argument("--flush-secs", type=int, default=200,
+                        help="number of seconds after which we should flush the training longs (default 200)")
 
     return parser.parse_known_args()
 
@@ -79,8 +83,11 @@ if __name__ == '__main__':
     with Pool(args.num_cpus) as pool:
         trials = []
         for trial in trial_configs:
-            trials.append(pool.apply_async(run_trial, (trial,),
-                {"device": device, "verbose": args.verbose}, error_callback=print_error))
+            trials.append(pool.apply_async(run_trial, (trial,), {
+                    "device": device, 
+                    "verbose": args.verbose, 
+                    "flush_secs": args.flush_secs
+                }, error_callback=print_error))
             
         # Wait for all trails to complete before returning
         for trial in trials:

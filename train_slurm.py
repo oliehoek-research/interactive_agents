@@ -43,7 +43,7 @@ def parse_args():
                         help="maximum number of SLURM tasks allowed to run in parallel")
 
     parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
-                        help="directory in which we should save results (will be mounted in each Singulairty container)")
+                        help="directory in which we should save results (will be mounted in each Singularity container)")
     
     return parser.parse_known_args()
 

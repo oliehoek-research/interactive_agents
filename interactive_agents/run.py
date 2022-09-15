@@ -38,7 +38,7 @@ def get_stop_conditions(stop):
 
 
 # TODO: Add validation to ensure all seeds within an experiment have same configuration
-def run_trial(trial, device='cpu', verbose=False):
+def run_trial(trial, device='cpu', verbose=False, flush_secs=200):
     print(f"running: {trial.name} - seed {trial.seed}")
 
     # Make output directory for trial
@@ -65,7 +65,7 @@ def run_trial(trial, device='cpu', verbose=False):
     iteration = 0
     complete = False
     
-    with SummaryWriter(path) as writer:
+    with SummaryWriter(path, flush_secs=flush_secs) as writer:
         while not complete:
             stats = trainer.train()
 

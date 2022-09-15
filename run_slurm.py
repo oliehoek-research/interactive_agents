@@ -24,12 +24,16 @@ def parse_args():
                         help="provide one or more experiment config files")
     parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
                         help="directory in which we should save results")
-    parser.add_argument("-v", "--verbose", action="store_true",
-                        help="print data for every training iteration")
+    
     parser.add_argument("--num-seeds", type=int,
                         help="the number of random seeds to run, overrides values from the config file")
     parser.add_argument("--seeds", type=int, nargs="+",
                         help="a list of random seeds to run, overrides values from the config file")
+
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print data for every training iteration")
+    parser.add_argument("--flush-secs", type=int, default=200,
+                        help="number of seconds after which we should flush the training longs (default 200)")
 
     parser.add_argument("--setup", action="store_true",
                         help="just setup the directory structure, run no experiments")
@@ -75,4 +79,4 @@ if __name__ == '__main__':
             raise ValueError(f"Invalid SLURM task ID '{task_id}'")
 
         # Run Trial
-        run_trial(trial, device=device, verbose=args.verbose)
+        run_trial(trial, device=device, verbose=args.verbose, flush_secs=args.flush_secs)
