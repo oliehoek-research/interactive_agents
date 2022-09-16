@@ -44,6 +44,8 @@ def parse_args():
 if __name__ == '__main__':
     args, unknown = parse_args()
 
+    # NOTE: This may be causing IO contention when running on SLURM
+    # NOTE: Mert's approach may have been better
     # Load configuration files
     experiments = load_configs(args.config_files)
 
@@ -58,6 +60,7 @@ if __name__ == '__main__':
         # Add custom arguments to config
         config["arguments"] = unknown
 
+    # NOTE: This may be causing IO contention when running on SLURM 
     # Setup experiment
     trial_configs = setup_experiments(experiments, args.output_path, use_existing=True)
 

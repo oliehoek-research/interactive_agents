@@ -244,8 +244,8 @@ def print_error(error):
     '''Error callback for python multiprocessing'''
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
 
-
-def cross_evaluate(populations, 
+# NOTE: Some of the machinery for collecting policies could be moved outside this method it seems
+def cross_evaluate(populations, # NOTE: Each "population" refers to the set of policies generate by a single random seed
                    agent_ids,  # NOTE: Why did we add this parameter?
                    env_cls, 
                    env_config, 
@@ -267,10 +267,10 @@ def cross_evaluate(populations,
     if num_cpus > 1:  #NOTE: We are using the Pool class wrong here as well
         pool = Pool(num_cpus)
 
-    population_ids = list(populations.keys())  # NOTE: What are these keys?
-    num_populations = len(population_ids)
+    population_ids = list(populations.keys())  # NOTE: Basically just getting the random seeds, as strings
+    num_populations = len(population_ids)  # NOTE: Basically just getting the number of seeds
 
-    num_agents = len(agent_ids)
+    num_agents = len(agent_ids)  # NOTE: Gets the number of individual agents in the environemt (not the number of teams)
     assert 2 <= num_agents, "environment must contain at least 2 agents for cross evaluation"
 
     # NOTE: The new script supports dividing agents into logical "teams"
@@ -280,10 +280,11 @@ def cross_evaluate(populations,
     else:
         adversaries = frozenset(adversaries)
 
-    threads = {}
+    threads = {}  # NOTE: We use the general-purpose "permutations" method, but do we need this (since always rank-2)?
     for permutation in permutations(2, num_populations):  # NOTE: We now use the number of "teams" rather than indivudal agents
         models = {}
 
+        # NOTE: Now we divide up teams "within" the run process
         for agent_id in agent_ids:  # NOTE: This process has changed from the original script to accomodate the idea of teams
             if agent_id in adversaries:
                 seed = population_ids[permutation[1]]

@@ -129,6 +129,7 @@ def print_error(error):
     """Error callback for python multiprocessing"""
     traceback.print_exception(type(error), error, error.__traceback__, limit=5)
 
+# NOTE: The name JPC is a little misleading, as the true JPC refers only to the case where we are comparing a population against itself
 # NOTE: Computes an asymmetric evaluation matrix - can we share this across scripts at some point?
 def jpc(eval_policies,
         target_policies,
@@ -151,6 +152,8 @@ def jpc(eval_policies,
     if num_cpus > 1:
         pool = Pool(num_cpus)
 
+    # NOTE: This script supports "adversaries", essentially teaming, as well, could we replicate this?
+    # NOTE: This logic is much simpler than that in the "cross_evaluate()" method in the "scalar_jpc" script 
     threads = {}
     for eval_id, eval_team in enumerate(eval_policies):
         for target_id, target_team in enumerate(target_policies):
@@ -186,6 +189,7 @@ def jpc(eval_policies,
     return jpc
 
 
+# NOTE: This is the main method we care about
 def cross_evaluate(eval_path, # NOTE: This is the data for the experiments we are trying to evaluate
                    target_path,  # NOTE: This is the self-play population we are comparing against
                    eval_map_spec, 
@@ -194,9 +198,10 @@ def cross_evaluate(eval_path, # NOTE: This is the data for the experiments we ar
                    num_cpus):
 
     # Load environment config
-    config_path = os.path.join(target_path, "config.yaml")
+    config_path = os.path.join(target_path, "config.yaml")  # NOTE: Uses the evaluation config used to train the target population, not the population being evaluated
     env_cls, env_config, max_steps = load_config(config_path)
 
+    # NOTE: Policy mapping, there has to be a better way to pass this to the command line (not a big issue though)
     # Build policy maps to eval and target population
     env = env_cls(env_config, spec_only=True)
     target_map = {id:id for id in env.possible_agents}
@@ -236,7 +241,7 @@ def cross_evaluate(eval_path, # NOTE: This is the data for the experiments we ar
                      num_episodes,
                      num_cpus)
 
-    # Generate self-play JPC matrix
+    # Generate self-play JPC matrix  # NOTE: We don't need the full JPC
     self_play = jpc(select_models(target_policies, agents), 
                     select_models(target_policies, adversaries),
                     env_cls,
