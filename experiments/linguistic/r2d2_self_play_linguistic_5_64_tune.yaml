@@ -21,8 +21,7 @@ r2d2_self_play_linguistic_5_64_tune:
     learner_config:
       num_batches: 16
       batch_size: 32
-      sync_iterations:
-        grid_search: [10, 20]
+      sync_iterations: 20
       learning_starts: 80
       gamma: 0.99
       beta: 0.5
@@ -35,12 +34,10 @@ r2d2_self_play_linguistic_5_64_tune:
       replay_eta:
         grid_search: [0.1, 0.5, 0.9]
       replay_beta_iterations: 1500
-      buffer_size:
-        grid_search: [16384, 32768]
+      buffer_size: 32768
       dueling: True
       model: lstm
       model_config:
         hidden_size: 128
         hidden_layers: 1
-      lr: 
-        grid_search: [0.001, 0.01]
+      lr: 0.001
