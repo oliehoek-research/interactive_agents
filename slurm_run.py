@@ -30,6 +30,7 @@ def parse_args():
 
 
 if __name__ == '__main__':
+    print("Launched on SLURM")
     args = parse_args()
 
     device = "cpu"  # NOTE: If we want to use a GPU, we need to allocate in in SLURM
