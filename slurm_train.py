@@ -76,7 +76,7 @@ if __name__ == '__main__':
     setup_command.extend(unknown)
 
     setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
-    paths = setup_process.stdout.splitlines()
+    paths = setup_process.stdout.decode("utf-8").splitlines()  # NOTE: Make sure to decode stdout before parsing it
 
     # Launch trials in SLURM
     run_command = [

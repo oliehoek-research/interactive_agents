@@ -29,8 +29,9 @@ if __name__ == '__main__':
     else:
         setup_command = ["python3", "subprocess_test.py", "--list"]
         setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
-        
-        paths = setup_process.stdout.splitlines()
+
+        # NOTE: "stdout" is a bytestring, which we need to decode before treating it as a Python string
+        paths = setup_process.stdout.decode("utf-8").splitlines()
         for path in paths:
             command = ["python3", "subprocess_test.py", "--path", path]
             subprocess.run(command)
