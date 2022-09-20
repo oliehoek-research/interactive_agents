@@ -41,13 +41,8 @@ def get_stop_conditions(stop):
 def run_trial(trial, device='cpu', verbose=False, flush_secs=200):
     print(f"running: {trial.name} - seed {trial.seed}")
 
-    # Make output directory for trial
-    path = os.path.join(trial.path, f"seed_{trial.seed}")
-    assert not os.path.exists(path), f"found existing path '{path}', aborting trial"
-    os.makedirs(path)
-
     # Save metadata
-    save_metadata(path)
+    save_metadata(trial.path, use_existing=False)
 
     # Extract termination conditions
     stop = trial.config.pop("stop", {})
@@ -58,14 +53,13 @@ def run_trial(trial, device='cpu', verbose=False, flush_secs=200):
     trainer = trainer_cls(trial.config.get("config", {}),
         seed=trial.seed, device=device, verbose=verbose)
 
-
     # Run trainer with TensorboardX logging
     stat_values = defaultdict(list)
     stat_indices = defaultdict(list)
     iteration = 0
     complete = False
     
-    with SummaryWriter(path, flush_secs=flush_secs) as writer:
+    with SummaryWriter(trial.path, flush_secs=flush_secs) as writer:
         while not complete:
             stats = trainer.train()
 
@@ -90,13 +84,13 @@ def run_trial(trial, device='cpu', verbose=False, flush_secs=200):
         series[key] = pandas.Series(np.asarray(values), np.asarray(stat_indices[key]))
 
     dataframe = pandas.DataFrame(series)
-    dataframe.to_csv(os.path.join(path, "results.csv"))
+    dataframe.to_csv(os.path.join(trial.path, "results.csv"))
     
     # Export policies
-    path = os.path.join(path, "policies")
-    os.makedirs(path)
+    policy_path = os.path.join(trial.path, "policies")
+    os.makedirs(policy_path)
 
     # NOTE: Should we let the trainer itself handle serialization?
     policies = trainer.export_policies()
     for id, policy in policies.items():
-        torch.jit.save(policy, os.path.join(path, f"{id}.pt"))
+        torch.jit.save(policy, os.path.join(policy_path, f"{id}.pt"))

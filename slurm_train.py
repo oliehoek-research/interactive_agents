@@ -5,16 +5,21 @@ and only imports modules from the python standard library.
 
 This script accepts all of the arguments that "train_local.py" does,
 except for the "--num-cpus" argument (use "--cpus-per-task" instead) and
-the "--gpu" flag, since GPU allocation is not yet supported by our code.
-This script also allows us to specify a Singulrity image in which to
+the "--gpu" flag, since SLURM GPU allocation is not yet supported by our 
+code.  This script also allows us to specify a Singulrity image in which to
 run experiments, and specify the details of the SLURM resource allocation
-for each job.  Any unrecognized keyword arguments will be passed to the
+for each job.
+
+Any unrecognized keyword arguments will be passed to the
 trainer clases (to support algorithm-specific arguments).
 
-The script will run singulraity locally (on the login node)
+The script will run singularity locally (on the login node)
 to setup the directory structure for the experiments, and then launch a
-SLURM job array with a job for each configuration and seed.  This script
-runs the "run_slurm.py" script, which should never be launched manually.
+SLURM job array with a job for each configuration and seed.  
+
+This script runs the "slurm_setup.py" locally to initialize the experiment
+directories, and then launches "slurm_run.py" with "sbatch" to run each trial
+as a separate SLURM job.
 """
 import argparse
 import subprocess
@@ -45,33 +50,55 @@ def parse_args():
     parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
                         help="directory in which we should save results (will be mounted in each Singularity container)")
     
+    parser.add_argument("-v", "--verbose", action="store_true",
+                        help="print data for every training iteration")
+    parser.add_argument("--flush-secs", type=int, default=200,
+                        help="number of seconds after which we should flush the training longs (default 200)")
+
     return parser.parse_known_args()
 
 
 if __name__ == '__main__':
     args, unknown = parse_args()
 
-    # Contruct base Singularity command
-    command = [
+    # Initialize experiment directories
+    setup_command = [
         "singularity", 
         "exec",
         "--bind",
         f"{args.output_path}:/mnt/output",
         args.image, 
         "python3", 
-        "run_slurm.py",
+        "slurm_setup.py",
         "--output-path",
-        "/mnt/output"]
-    command.extend(unknown)
+        "/mnt/output"
+    ]
+    setup_command.extend(unknown)
 
-    # Initialize directory structure and get the number of jobs to run
-    setup_command = command + ["--setup"]
     setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
-    num_tasks = int(setup_process.stdout)
+    paths = setup_process.stdout.splitlines()
+
+    # Launch trials in SLURM
+    run_command = [
+        "singularity", 
+        "exec",
+        "--bind",
+        f"{args.output_path}:/mnt/output",
+        args.image, 
+        "python3", 
+        "slurm_run.py",
+        "--flush-secs",
+        args.flush_secs
+    ]
+
+    if args.verbose:
+        run_command.append("verbose")
+
+    run_command.extend(paths)
 
     # Join Singularity command into a single string
-    command = [f'"{token}"' for token in command]
-    command = " ".join(command)
+    run_command = [f'"{token}"' for token in run_command]
+    run_command = " ".join(run_command)
 
     # Launch SLURM job array to run experiments
     slurm_command = ["sbatch"]
@@ -84,8 +111,8 @@ if __name__ == '__main__':
         f"--job-name={args.job_name}",
         f"--output={args.slurm_output}"
     ])
-    slurm_command.append(f"--array=0-{num_tasks - 1}%{args.max_tasks}")
+    slurm_command.append(f"--array=0-{len(paths) - 1}%{args.max_tasks}")
     slurm_command.append("--wrap")
-    slurm_command.append(command)
+    slurm_command.append(run_command)
 
     subprocess.run(slurm_command)

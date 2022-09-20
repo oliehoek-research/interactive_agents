@@ -1,10 +1,6 @@
-# TODO: Need to figure out how this process works
-'''Implements grid-search over training configurations'''
+"""Implements grid-search over training configurations"""
 from collections import namedtuple
 from copy import deepcopy
-import os
-import os.path
-import yaml
 
 Parameter = namedtuple("Parameter", ["key", "value"])
 
