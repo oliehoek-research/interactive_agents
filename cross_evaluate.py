@@ -73,7 +73,7 @@ def load_config(path):
 def load_policies(path, policy_map):
     policies = defaultdict(dict)
 
-    exp = re.compile("seed_(\d+)")
+    exp = re.compile("seed_(\d+)")  # NOTE: Do we have this same logic in the scalar_jpc script?
     for obj in os.listdir(path):
         match = exp.match(obj)
         if match is not None:
@@ -92,9 +92,9 @@ def load_policies(path, policy_map):
 
 # NOTE: Loads the list of dictionaries with the same set of policies for different seeds
 def select_models(population, agent_ids):
-    policies = []
+    policies = []  # NOTE: This list will have one entry per seed
     for seed in population.values():
-        models = {}
+        models = {} # NOTE: the "models" dictionary for each seed is a mapping from a subset of the agent IDs to a subset of the loaded policies
         for agent_id in agent_ids:
             models[agent_id] = seed[agent_id]
         
@@ -233,7 +233,7 @@ def cross_evaluate(eval_path, # NOTE: This is the data for the experiments we ar
 
     # NOTE: We generate two entire JPCs, which may not be necessary (only use the diagonals)
     # Generate cross-play JPC matrix
-    cross_play = jpc(select_models(eval_policies, agents), 
+    cross_play = jpc(select_models(eval_policies, agents),  # NOTE: What does "select_models()" do?
                      select_models(target_policies, adversaries),
                      env_cls, 
                      env_config, 
@@ -264,7 +264,7 @@ if __name__ == '__main__':
     target_path = args.path[1] if len(args.path) > 1 else eval_path  # NOTE: If no second path is provided, we evaluate the population against itself
 
     # NOTE: This seems to be where the magic happens - seems to output two eval matrices
-    cross_play, self_play = cross_evaluate(eval_path, 
+    cross_play, self_play = cross_evaluate(eval_path,  # NOTE: Mostly, what this method does is load policies and organize them into teams, then it calls a separate "jpc" method to get the actual cross-eval matrix
                                            target_path, 
                                            args.mapping, 
                                            args.adversaries, 

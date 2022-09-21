@@ -1,4 +1,4 @@
-"""Selects the best configuration(s) from a hyperparameter sweep.
+"""Selects the best configuration(s) from a hyperparameter grid search.
 
 Given a directory containing multiple experiments with different configurations,
 this script selects the configuration (or configurations if there is a tie) that
@@ -96,7 +96,7 @@ if __name__ == "__main__":
                     config = yaml.load(config_file, Loader=yaml.FullLoader)
                 
                 if "trainer" not in config:
-                    config = list(config.values)[0]
+                    config = list(config.values())[0]
 
                 trainer = config["trainer"]
                 trainer_config = config["config"]
@@ -144,7 +144,6 @@ if __name__ == "__main__":
                 print(yaml.dump(config.config, default_flow_style=False))
     
     # Return best config
-    print(f"\nBest Value: {best_mean}")
     print("Best Configs:")
 
     for config in best_configs:
@@ -152,3 +151,6 @@ if __name__ == "__main__":
         print(f"Trainer: {config.trainer}")
         print("Config:")
         print(yaml.dump(config.config, default_flow_style=False))
+    
+    print(f"\n{len(best_configs)} configs (out of {len(configs)}) achieved the best observed value")
+    print(f"\nBest value: {best_mean}")

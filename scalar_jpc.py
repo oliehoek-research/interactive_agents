@@ -341,7 +341,7 @@ if __name__ == '__main__':
     args = parse_args()
 
     # Limit CPU paralellism for policy inference
-    torch.set_num_threads(args.num_cpus)  # NOTE: Need to fix this, same issue as the trainign script
+    torch.set_num_threads(args.num_cpus)  # NOTE: Need to fix this, same issue as the training script
 
     if args.output_path is not None:  # NOTE: Minor point, but the "tag" parameter is a little confusing to the user
         path = get_dir(args.output_path, args.tag)

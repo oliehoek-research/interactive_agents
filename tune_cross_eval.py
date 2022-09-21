@@ -1,4 +1,7 @@
-"""Selects the best configuration(s) from a sweep relative to a fixed population.
+"""
+TODO: Update this documentation
+
+Selects the best configuration(s) from a sweep relative to a fixed population.
 
 Takes two directory paths as input.  The first path contains the experiments
 corresponding to the hyperparameter sweep.  The second path contains a single
@@ -22,6 +25,8 @@ import os
 import os.path
 import pandas
 import yaml
+
+# TODO: Currently this script is almost identical to the "tune.py" script
 
 class Configuration:
 
@@ -71,16 +76,18 @@ def parse_map(map_spec):  # NOTE: We could share this across scripts
     return map
 
 
+# NOTE: This method is what really needs to change for us to be able to use cross-evaluation for hyperparameter tuning
 def load_runs(path, loss, accumulate):
-    print(f"loading: {path}")
-    runs = []
+    print(f"loading: {path}")  # NOTE: Here "path" is the directory containing results for a single configuration
+    runs = []  # NOTE: What are the elements of this list?
 
     if os.path.isdir(path):
-        for obj in os.listdir(path):
+        for obj in os.listdir(path):  # NOTE: Iterate over random seeds (we don't need to parse the seeds themselves here)
             results_path = os.path.join(path, obj)
 
             if os.path.isdir(results_path):
-                results_file = os.path.join(results_path, "results.csv")
+                # NOTE: For cross evaluation, we don't need to load statistics, just policies
+                results_file = os.path.join(results_path, "results.csv")  # NOTE: Load statistics from the CSV file, rather than the tensorboard logs
 
                 if os.path.isfile(results_file):
 
@@ -89,9 +96,9 @@ def load_runs(path, loss, accumulate):
 
                     # Filter out empy data series
                     if len(results.index) > 0:
-                        result = results[loss]
+                        result = results[loss]  # NOTE: We only collect a single statistic
 
-                        if "max" == accumulate:
+                        if "max" == accumulate:  # NOTE: Because each statistic is itself a time-series (indexed by training iteration, we need to reduce it to a scalar)
                             value = np.nanmax(result)
                         elif "max" == accumulate:
                             value = np.nanmin(result)
@@ -100,7 +107,7 @@ def load_runs(path, loss, accumulate):
 
                         runs.append(value)  # NOTE: Is there a risk that we store a reference to the full dataframe in this scalar value?
 
-    return runs
+    return runs  # NOTE: What we return is a list of values, one for each run (why don't we just take the mean of these here?)
 
 
 if __name__ == "__main__":
@@ -114,11 +121,11 @@ if __name__ == "__main__":
     print("Loading runs...")
 
     configs = dict()
-    for obj in os.listdir(args.path):
+    for obj in os.listdir(args.path):  # NOTE: Iterate over experiment directories for individual configurations
         experiment_path = os.path.join(args.path, obj)
 
         if os.path.isdir(experiment_path):
-            config_path = os.path.join(experiment_path, "config.yaml")
+            config_path = os.path.join(experiment_path, "config.yaml")  # NOTE: Check that the directory actually contains a configuration
 
             if os.path.isfile(config_path):
                 with open(config_path, 'r') as config_file:
@@ -130,7 +137,7 @@ if __name__ == "__main__":
                 trainer = config["trainer"]
                 trainer_config = config["config"]
                 
-                runs = load_runs(experiment_path, args.loss, args.accumulate)
+                runs = load_runs(experiment_path, args.loss, args.accumulate)  # NOTE: Load statistics for each random seed (what does this return?)
                 config_str = json.dumps({
                     "trainer": trainer,
                     "config": trainer_config
@@ -140,6 +147,8 @@ if __name__ == "__main__":
                 if config_str not in configs:
                     configs[config_str] = Configuration(trainer, trainer_config)
 
+                # NOTE: We shouldn't try to load every policy for every run of every configuration into memory at runtime, too much space
+                # NOTE: There is the unusual possibility that we have multiple experiment directories with the same policy, need to take the mean over all equivalent configs
                 configs[config_str].runs.extend(runs)
 
     # Identify best configuration(s)
