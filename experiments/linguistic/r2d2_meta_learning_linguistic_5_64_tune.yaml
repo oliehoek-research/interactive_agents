@@ -34,6 +34,10 @@ r2d2_meta_learning_linguistic_5_64_tune:
       dueling: True
       model: lstm
       model_config:
-        hidden_size: 128
-        hidden_layers: 1
-      lr: 0.001
+        grid_search:
+        - hidden_size: 256
+          hidden_layers: 1
+        - hidden_size: 256
+          hidden_layers: 2
+      lr:
+        grid_search: [0.001, 0.01]
