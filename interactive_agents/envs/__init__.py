@@ -1,5 +1,6 @@
 from .common import MultiagentEnv
 
+# TODO: At some point it might be cleaner to use importlib to do this
 def get_coordination_game():
     from interactive_agents.envs.coordination import CoordinationGame
     return CoordinationGame
@@ -9,6 +10,9 @@ def get_linguistic_game():
     from interactive_agents.envs.linguistic_game import LinguisticCoordination
     return LinguisticCoordination
 
+def get_listener():
+    from interactive_agents.envs.listener import ListenerEnv
+    return ListenerEnv
 
 def get_gym_env():
     from interactive_agents.envs.gym_env import GymEnv
@@ -33,6 +37,7 @@ def get_pettingzoo_mpe():
 ENVS = {
     "coordination": get_coordination_game,
     "linguistic": get_linguistic_game,
+    "listener": get_listener,
     "gym": get_gym_env,
     "memory": get_memory_game,
     "repeated": get_repeated_game,

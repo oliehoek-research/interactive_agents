@@ -1,0 +1,37 @@
+r2d2_listener_4_32_tune:
+  stop:
+      iterations: 500
+  trainer: independent
+  num_seeds: 4
+  config:
+    max_steps: 200
+    iteration_episodes: 16
+    eval_iterations: 10
+    eval_episodes: 16
+    env: listener
+    env_config:
+      stages: 16
+      cues: 4
+    learner: R2D2
+    learner_config:
+      num_batches: 16
+      batch_size: 32
+      sync_iterations: 10
+      learning_starts: 40
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 1500
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.5
+      replay_beta_iterations: 1500
+      buffer_size: 32768
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 256
+        hidden_layers: 1
+      lr: 0.01

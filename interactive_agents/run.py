@@ -1,41 +1,15 @@
 from collections import defaultdict
-from datetime import datetime
-from git import Repo
-from multiprocessing import Pool
 import numpy as np
 import os
 import os.path
 import pandas
 from tensorboardX import SummaryWriter
 import torch
-from torch.multiprocessing import Pool
-import traceback
-import yaml
 
-from interactive_agents.grid_search import grid_search
+from interactive_agents.experiments import save_metadata
 from interactive_agents.training import get_trainer_class
 
-def make_unique_dir(path, tag):
-    sub_path = os.path.join(path, tag)
-    idx = 0
-
-    while os.path.exists(sub_path):
-        idx += 1
-        sub_path = os.path.join(path, tag + "_" + str(idx))
-    
-    os.makedirs(sub_path)
-    return sub_path
-
-def make_or_use_dir(path, tag):
-    sub_path = os.path.join(path, tag)
-    if not os.path.exists(sub_path):
-        os.makedirs(sub_path)
-    return sub_path
-
-def print_error(error):
-    traceback.print_exception(type(error), error, error.__traceback__, limit=5)
-
-
+# Parses the run config to determine when to stop training
 def get_stop_conditions(stop):
     max_iterations = stop.pop("iterations", np.infty)
     
@@ -63,26 +37,31 @@ def get_stop_conditions(stop):
     return max_iterations, termination
 
 
-def run_trail(base_path, config, seed, device, verbose):
-    path = os.path.join(base_path, f"seed_{seed}")  
-    os.makedirs(path)
+# TODO: Add validation to ensure all seeds within an experiment have same configuration
+def run_trial(trial, device='cpu', verbose=False, flush_secs=200):
+    # torch.autograd.set_detect_anomaly(True)
+
+    print(f"running: {trial.name} - seed {trial.seed}")
+
+    # Save metadata
+    save_metadata(trial.path, use_existing=False)
 
     # Extract termination conditions
-    stop = config.pop("stop", {})
+    stop = trial.config.pop("stop", {})
     max_iterations, stop = get_stop_conditions(stop)
 
     # Build trainer
-    trainer_cls = get_trainer_class(config.get("trainer", "independent"))
-    trainer = trainer_cls(config.get("config", {}),
-        seed=seed, device=device, verbose=verbose)
-    
+    trainer_cls = get_trainer_class(trial.config.get("trainer", "independent"))
+    trainer = trainer_cls(trial.config.get("config", {}),
+        seed=trial.seed, device=device, verbose=verbose)
+
     # Run trainer with TensorboardX logging
     stat_values = defaultdict(list)
     stat_indices = defaultdict(list)
     iteration = 0
     complete = False
     
-    with SummaryWriter(path) as writer:
+    with SummaryWriter(trial.path, flush_secs=flush_secs) as writer:
         while not complete:
             stats = trainer.train()
 
@@ -107,184 +86,13 @@ def run_trail(base_path, config, seed, device, verbose):
         series[key] = pandas.Series(np.asarray(values), np.asarray(stat_indices[key]))
 
     dataframe = pandas.DataFrame(series)
-    dataframe.to_csv(os.path.join(path, "results.csv"))
+    dataframe.to_csv(os.path.join(trial.path, "results.csv"))
     
     # Export policies
-    path = os.path.join(path, "policies")
-    os.makedirs(path)
+    policy_path = os.path.join(trial.path, "policies")
+    os.makedirs(policy_path)
 
-    policies = trainer.export_policies()  # NOTE: Should we let the trainer itself handle these processes?
+    # NOTE: Should we let the trainer itself handle serialization?
+    policies = trainer.export_policies()
     for id, policy in policies.items():
-        torch.jit.save(policy, os.path.join(path, f"{id}.pt"))
-
-
-def launch_experiment(path, name, config, pool, device, verbose):
-    path = make_unique_dir(path, name)
-
-    # Save experiment configuration
-    with open(os.path.join(path, "config.yaml"), 'w') as config_file:
-        yaml.dump({name: config}, config_file)
-
-    # Save experiment metadata
-    metadata = {
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-    try:
-        repo = Repo(search_parent_directories=True)
-        metadata["git_commit"] = str(repo.active_branch.commit)
-    except:
-        print("NOTICE: Could not determine current git commit")
-
-    with open(os.path.join(path, "metadata.yaml"), 'w') as metadata_file:
-        yaml.dump(metadata, metadata_file)
-
-    # Get random seeds
-    num_seeds = config.get("num_seeds", 1)
-    seeds = config.get("seeds", list(range(num_seeds)))
-
-    # Launch trials
-    trials = []
-    for seed in seeds:
-        print(f"launching: {name} - seed: {seed}")
-        trials.append(pool.apply_async(run_trail, 
-            (path, config, seed, device, verbose), error_callback=print_error))
-    
-    return trials
-
-def launch_experiment_triton(path, name, config, pool, device, verbose):
-    path = make_or_use_dir(path, name)
-
-    # Save experiment configuration
-    config_file_path = os.path.join(path, "config.yaml")
-    if not os.path.isfile(config_file_path):
-        with open(config_file_path, 'w') as config_file:
-            yaml.dump({name: config}, config_file)
-
-    # Save experiment metadata
-    metadata = {
-        "timestamp": datetime.utcnow().isoformat()
-    }
-
-    # Get random seeds
-    num_seeds = config.get("num_seeds", 1)
-    seeds = config.get("seeds", list(range(num_seeds)))
-
-    try:
-        repo = Repo(search_parent_directories=True)
-        metadata["git_commit"] = str(repo.active_branch.commit)
-    except:
-        print("NOTICE: Could not determine current git commit")
-
-    with open(os.path.join(path, "metadata_s{}.yaml".format(seeds)), 'w') as metadata_file:
-        yaml.dump(metadata, metadata_file)
-
-
-    # Launch trials
-    trials = []
-    for seed in seeds:
-        print(f"launching: {name} - seed: {seed}")
-        trials.append(pool.apply_async(run_trail, 
-            (path, config, seed, device, verbose), error_callback=print_error))
-    
-    return trials
-
-def run_experiments(experiments, 
-                    base_path, 
-                    num_cpus=1,
-                    device="cpu", 
-                    verbose=False, 
-                    num_seeds=None, 
-                    seeds=None,
-                    resources=None):
-
-    # Limit CPU paralellism globally
-    torch.set_num_threads(num_cpus)
-
-    # Uses the built-in multiprocessing pool to schedule experiments
-    pool = Pool(num_cpus)
-
-    # Convert resource list to dictionary (do not load files yet, let the trainer do that)
-    if resources is not None:
-        resource_dict = {}  # NOTE: Need two policy maps
-
-        for idx in range(0, len(resources), 2):
-            resource_id = str(resources[idx])
-            resource_path = str(resources[idx + 1])
-            resource_dict[resource_id] = resource_path
-        
-        resources = resource_dict
-
-    # Generate hyperparameter variations and queue all trials
-    trials = []
-
-    for name, config in experiments.items():
-        
-        # Override seeds with provided seeds
-        if num_seeds is not None:
-            config["num_seeds"] = num_seeds
-        if seeds is not None:
-            config["seeds"] = seeds
-
-        # Add resource paths to the config  # NOTE: This will fail if we do not specify a trainer config
-        config["config"]["resources"] = resources
-
-        # Get grid-search variations of config (for hyperparameter tuning)
-        variations = grid_search(name, config)
-
-        if variations is None:
-            trials += launch_experiment(base_path, name, config, pool, device, verbose)
-        else:
-            exp_path = make_unique_dir(base_path, name)
-
-            # Save base tuning configuration for reference
-            with open(os.path.join(exp_path, "config.yaml"), 'w') as config_file:
-                yaml.dump({name: config}, config_file)
-
-            for var_name, var_config in variations.items():
-                trials += launch_experiment(exp_path, var_name, var_config, pool, device, verbose)
-
-    # Wait for trails to complete before returning
-    for trial in trials:
-        trial.wait()
-
-def run_experiments_triton(experiments, 
-                    base_path, 
-                    num_cpus=1,
-                    device="cpu", 
-                    verbose=False, 
-                    num_seeds=None, 
-                    seeds=None):
-
-    assert seeds is not None, "The triton experiment must run with a seed specified."
-   
-    # Limit CPU paralellism globally
-    torch.set_num_threads(num_cpus)
-
-    # Uses the built-in multiprocessing pool to schedule experiments
-    pool = Pool(num_cpus)
-
-    # Generate hyperparameter variations and queue all trials
-    trials = []
-
-    for name, config in experiments.items():
-        config["seeds"] = seeds
-        trials += launch_experiment_triton(base_path, name, config, pool, device, verbose)
-        
-    # Wait for trails to complete before returning
-    for trial in trials:
-        trial.wait()
-
-
-def load_configs(config_files):
-    """
-    Simple utility for loading a list of config files and combining them into
-    a single dictionary. Assumes each file provides a unique experiment name.
-    """
-    experiments = {}
-
-    for path in config_files:
-        with open(path) as f:
-            experiments.update(yaml.load(f, Loader=yaml.FullLoader))
-    
-    return experiments
+        torch.jit.save(policy, os.path.join(policy_path, f"{id}.pt"))
