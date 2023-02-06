@@ -39,6 +39,8 @@ def get_stop_conditions(stop):
 
 # TODO: Add validation to ensure all seeds within an experiment have same configuration
 def run_trial(trial, device='cpu', verbose=False, flush_secs=200):
+    # torch.autograd.set_detect_anomaly(True)
+
     print(f"running: {trial.name} - seed {trial.seed}")
 
     # Save metadata

@@ -1,3 +1,4 @@
+# TODO: Check that this still runs
 """Use this script to launch experiments locally on your own machine.
 
 For a complete configuration file (with no "grid_search" keys), this

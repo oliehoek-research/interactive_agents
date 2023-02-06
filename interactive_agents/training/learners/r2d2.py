@@ -26,18 +26,20 @@ class QNetwork(nn.Module):
 
         self._model = build_model(obs_space.shape, num_features, config)
 
+    # NOTE: The type of "state" only works for LSTM, so does this serialize with GRU?
     def forward(self, 
             obs: torch.Tensor, 
             state: Tuple[torch.Tensor, torch.Tensor]):
         # if state is None:
         #    state = self._model.initial_state(obs.shape[1], str(obs.device))
-
         features, state = self._model(obs, state)
-        Q = features[:,:,:self._num_actions]
 
         if self._dueling:
+            A = features[:,:,:self._num_actions]
             V = features[:,:,-1:]
-            Q += V - Q.mean(-1, keepdim=True) 
+            Q = V + A - A.mean(dim=-1, keepdim=True)  # NOTE: Does this help?
+        else:
+            Q = features
 
         return Q, state
 
@@ -128,7 +130,7 @@ class RecurrentReplayBuffer:
         seq_lens = [len(rewards) for rewards in batch[Batch.REWARD]]
 
         for key in batch.keys():
-            batch[key] = nn.utils.rnn.pad_sequence(batch[key])
+            batch[key] = nn.utils.rnn.pad_sequence(batch[key]).detach()
 
         return batch, weights, seq_lens, indices
 
@@ -165,20 +167,23 @@ class R2D2Policy:
             action_space, network_config, dueling).to(device)
     
     def act(self, obs, state):
-        obs = torch.as_tensor(obs, 
-            dtype=torch.float32, device=self._device)
-        obs = obs.unsqueeze(0)  # Add batch dimension
-        obs = obs.unsqueeze(0)  # Add time dimension (for RNNs)
+        with torch.no_grad():
+            obs = torch.as_tensor(obs, 
+                dtype=torch.float32, device=self._device)
+            obs = obs.unsqueeze(0)  # Add batch dimension
+            obs = obs.unsqueeze(0)  # Add time dimension (for RNNs)
 
-        q_values, state = self._q_network(obs, state)
-        q_values = q_values.detach().cpu().numpy()  # Convert back to a numpy array
-        q_values = q_values.squeeze(0)  # Remove time dimension
-        q_values = q_values.squeeze(0)  # Remove batch dimension
+            # state = state.detach()  # NOTE: May not be necessary in no_grad() context
 
-        if np.random.random() <= self._epsilon:
-            action = self._action_space.sample()
-        else:
-            action = q_values.argmax()
+            q_values, state = self._q_network(obs, state)
+            q_values = q_values.detach().cpu().numpy()  # Convert back to a numpy array
+            q_values = q_values.squeeze(0)  # Remove time dimension
+            q_values = q_values.squeeze(0)  # Remove batch dimension
+
+            if np.random.random() <= self._epsilon:
+                action = self._action_space.sample()
+            else:
+                action = q_values.argmax()
 
         return action, q_values, state
 
@@ -234,8 +239,9 @@ class R2D2:
         self._target_network = QNetwork(obs_space, 
             action_space, self._network_config, self._dueling)
         
-        self._online_network = torch.jit.script(self._online_network)
-        self._target_network = torch.jit.script(self._target_network)
+        # NOTE: Cannot do backpropagation on compiled modules
+        # self._online_network = torch.jit.script(self._online_network)
+        # self._target_network = torch.jit.script(self._target_network)
 
         self._online_network.to(device)
         self._target_network.to(device)
@@ -262,6 +268,7 @@ class R2D2:
 
         weights = torch.as_tensor(weights, dtype=torch.float32, device=self._device)
 
+        # NOTE: The torch error is here
         online_q, _ = self._online_network(batch[Batch.OBS], h0)
         target_q, _ = self._target_network(batch[Batch.NEXT_OBS], h0)
 
@@ -286,28 +293,28 @@ class R2D2:
         outputs = defaultdict(list)
 
         for _ in range(self._num_batches):   
+            # with torch.autograd.set_detect_anomaly(True):
+                # Sample batch 
+                batch, weights, seq_lengths, indices = \
+                    self._replay_buffer.sample(self._batch_size, self._beta)
+                
+                outputs["replay_weight"].append(weights)
 
-            # Sample batch 
-            batch, weights, seq_lengths, indices = \
-                self._replay_buffer.sample(self._batch_size, self._beta)
-            
-            outputs["replay_weight"].append(weights)
+                # Compute loss and do gradient update
+                self._optimizer.zero_grad()
+                loss, td_errors = self._loss(batch, weights, seq_lengths)
+                loss.backward()
+                self._optimizer.step()
 
-            # Compute loss and do gradient update
-            self._optimizer.zero_grad()
-            loss, td_errors = self._loss(batch, weights, seq_lengths)
-            loss.backward()
-            self._optimizer.step()
+                td_errors = td_errors.detach().cpu().numpy()
+                outputs["td_error"].append(td_errors.mean())
+                outputs["loss"].append(loss.detach().cpu().numpy())
 
-            td_errors = td_errors.detach().cpu().numpy()
-            outputs["td_error"].append(td_errors)
-            outputs["loss"].append(loss.detach().cpu().numpy())
+                # Update replay priorities
+                priorities = self._priority(td_errors)
+                self._replay_buffer.update_priorities(indices, priorities)
 
-            # Update replay priorities
-            priorities = self._priority(td_errors)
-            self._replay_buffer.update_priorities(indices, priorities)
-
-            outputs["priorities"].append(priorities)
+                outputs["priorities"].append(priorities)
         
         stats = {}
         for key, value in outputs.items():
