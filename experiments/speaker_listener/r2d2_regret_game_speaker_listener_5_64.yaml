@@ -1,38 +1,41 @@
-r2d2_listener_4_32:
+r2d2_regret_game_speaker_listener_5_64:
   stop:
-      iterations: 1000
-  trainer: independent
+    iterations: 500
+  trainer: regret_game
   num_seeds: 4
   config:
     max_steps: 200
-    iteration_episodes: 32
-    eval_iterations: 10
-    eval_episodes: 16
-    env: listener
+    round_iterations: 200
+    burn_in_iterations: 500
+    weight_decay: 0.0
+    alice_episodes: 32
+    bob_episodes: 32
+    eval_iterations: 40
+    eval_episodes: 64
+    env: speaker_listener
     env_config:
-      stages: 32
-      cues: 4
-      identity: False  # For debugging
+      stages: 64
+      cues: 5
     learner: R2D2
     learner_config:
       num_batches: 16
       batch_size: 32
-      sync_iterations: 10
-      learning_starts: 40
+      sync_iterations: 20
+      learning_starts: 50
       gamma: 0.99
       beta: 0.5
       double_q: True
       epsilon_initial: 0.5
-      epsilon_iterations: 750
+      epsilon_iterations: 400
       epsilon_final: 0.01
       replay_alpha: 0.6
       replay_epsilon: 0.01
       replay_eta: 0.5
-      replay_beta_iterations: 750
+      replay_beta_iterations: 400
       buffer_size: 16384
       dueling: True
       model: lstm
       model_config:
         hidden_size: 256
-        hidden_layers: 2
+        hidden_layers: 1
       lr: 0.001

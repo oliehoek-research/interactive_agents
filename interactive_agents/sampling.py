@@ -170,7 +170,7 @@ class FrozenAgent:
         action = action.squeeze(0)  # Remove time dimension
         action = action.squeeze(0)  # Remove batch dimension
         
-        return action.numpy(), {}
+        return action.cpu().numpy(), {}
 
 
 class FrozenPolicy:

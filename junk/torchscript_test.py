@@ -1,3 +1,5 @@
+# NOTE: Modify this to use Torchscript Tracing, which is more 
+# stable.  Simpler question first, does this still work?
 '''Test the us of TorchScript to export and import of models with graph structure'''
 from collections import namedtuple
 import gym
@@ -11,6 +13,7 @@ from typing import Union, Tuple, Optional
 Sample = namedtuple("Step", ["obs", "action"])
 
 
+# NOTE: This is the same memory game we have used in a lot of places (need to reduce duplicate code)
 class MemoryGame(gym.Env):
     '''The n-step memory game with noisy observations'''
 
@@ -52,6 +55,7 @@ class MemoryGame(gym.Env):
             return self._current_cue
 
 
+# NOTE: Generates roll-outs in a given environment
 def generate_data(env, episodes):
     data = []
     for _ in range(episodes):
@@ -69,6 +73,7 @@ def generate_data(env, episodes):
     return data
 
 
+# NOTE: Runs evluation episodes using a policy model (doesn't seem to use the "FrozenPolicy" class)
 def evaluate(env, model, episodes):
     total_reward = 0
     total_successes = 0
@@ -93,6 +98,7 @@ def evaluate(env, model, episodes):
     return (total_reward / episodes), (total_successes / episodes)
 
 
+# NOTE: Simple replay buffer - why do we need this since we don't seem to be doing RL?
 class ReplayBuffer:
     
     def __init__(self, num_actions, capacity=128):
@@ -138,6 +144,7 @@ class ReplayBuffer:
         return obs_batch, action_batch, seq_mask
 
 
+# NOTE: As the comment says, a simple LSTM network class
 class LSTMNet(nn.Module):
     '''Simple LSTM network class'''
 
@@ -203,13 +210,16 @@ if __name__ == "__main__":
     
     # Initialize model
     model = LSTMNet(env.observation_space.shape[0], env.action_space.n, hidden_size)
-    model = torch.jit.script(model)
+
+    # NOTE: Need to add support for tracing rather than scripting
+    model = torch.jit.script(model)  # NOTE: Is there a real performance advantage to doing this in advance?
 
     # Train pytoch model
     print("\n===== Training Model =====")
     optimizer = Adam(model.parameters(), lr=0.001)
-    initial_hidden = model.get_h0(batch_size)
+    initial_hidden = model.get_h0(batch_size)  # NOTE: One of the problems with tracing is how we implement initial states
 
+    # NOTE: Actually doing behvioral cloning, and using the replay buffer to generate batches
     for epoch in range(training_epochs):
         obs_batch, action_batch, seq_mask = buffer.sample(batch_size)
         optimizer.zero_grad()
@@ -241,8 +251,8 @@ if __name__ == "__main__":
     print(f"    success rate: {success_rate * 100}%")
 
     # Copy model
-    model.eval()
-    model = torch.jit.freeze(model, ["get_h0"])
+    model.eval()  # NOTE: Are models serielized in training mode?
+    model = torch.jit.freeze(model, ["get_h0"])  # NOTE: Why do we need this?
     mean_reward, success_rate = evaluate(env, model, eval_episodes)
     print(f"\n----- Frozen Model -----")
     print(f"    mean return: {mean_reward}")

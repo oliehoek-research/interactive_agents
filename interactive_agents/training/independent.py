@@ -113,6 +113,10 @@ class IndependentTrainer:
 
             for key, value in eval_batch.statistics().items():
                 stats["eval/" + key] = value
+            
+            if self._verbose:
+                print(f"\n\nEVALUATION, seed {self._seed}, iteration {self._current_iteration}")
+                print(f"mean eval reward: {stats['eval/reward_mean']}")
 
         # Accumulate global statistics
         self._global_timer.stop()

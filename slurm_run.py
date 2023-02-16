@@ -1,10 +1,12 @@
+# NOTE: This is a pretty clumsy setup, has to be a more elegant/reliable way of doing this
+
 """Do not run this script manually.
 
 This script is intended to be called by the "train_slurm.py" script 
 to launch experiments on SLURM clusters.  This script assumes that it
 has been launched as part of a SLURM job array, and requires that the
 'SLURM_ARRAY_TASK_ID' has been set.  The script accepts a list of 
-paths to trial directories, and loads and runsone of these paths depending
+paths to trial directories, and loads and runs one of these paths depending
 on its own SLURM task ID.
 """
 import argparse

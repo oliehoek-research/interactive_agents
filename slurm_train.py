@@ -1,3 +1,14 @@
+# NOTE: The basic idea is good, an argument-for-argument copy
+# of the local training script that parallelizes across a SLURM
+# cluster.  Implementation is a bit awkward.
+#
+# Should stick with Singularity as a container environemnt for 
+# now.  Easy to port to docker later.
+# 
+# Note, this script launches a local singularity container, what
+# non-standard libraries does it really need to set things up?
+# - I think just PyYAML
+# 
 """Use this script to launch experiments on a SLURM cluster.
 
 This script does not need to be run within a singularity container,
@@ -30,6 +41,7 @@ def parse_args():
 
     parser.add_argument("-i", "--image", type=str, default="./singularity_image.sif",
                         help="singularity image in which to run experiments")
+
     parser.add_argument("-p", "--partition", type=str, default="influence",
                         help="name of SLURM partition to use")
     parser.add_argument("-q", "--qos", type=str, default="short",
@@ -61,6 +73,9 @@ def parse_args():
 if __name__ == '__main__':
     args, unknown = parse_args()
 
+    # NOTE: This command launches a singularity container which runs
+    # the "slurm_setup.py" script to set up the data directories
+
     # Initialize experiment directories
     setup_command = [
         "singularity", 
@@ -76,6 +91,8 @@ if __name__ == '__main__':
     setup_command.extend(unknown)
 
     setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
+
+    # NOTE: The script returns, through the container output, 
     paths = setup_process.stdout.decode("utf-8").splitlines()  # NOTE: Make sure to decode stdout bytestring before parsing it
 
     # Launch trials in SLURM

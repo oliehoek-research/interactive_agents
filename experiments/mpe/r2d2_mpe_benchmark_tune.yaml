@@ -1,12 +1,12 @@
-r2d2_mpe_benchmark:
+r2d2_mpe_benchmark_tune:
   stop:
-    iterations: 200
+    iterations: 2000
   trainer: independent
   num_seeds: 4
   config:
-    max_steps: 400  # What is the episode limite for the MPE?
+    max_steps: 200
     iteration_episodes: 64
-    eval_iterations: 5
+    eval_iterations: 10
     eval_episodes: 64
     env: mpe
     env_config:
@@ -14,25 +14,30 @@ r2d2_mpe_benchmark:
         grid_search: [simple_v2, simple_push_v2, simple_tag_v2, simple_adversary_v2]
     learner: R2D2
     learner_config:
-      lr: 0.001
+      lr: 
+        grid_search: [0.001, 0.01]
       dueling: True
-      num_batches: 32
+      num_batches:
+        grid_search: [16, 32]
       batch_size: 32
-      sync_iterations: 1
-      learning_starts: 5
+      sync_iterations:
+        grid_search: [10, 20]
+      learning_starts: 50
       gamma: 0.99
       beta: 0.5
       double_q: True
-      epsilon_initial: 0.2
-      epsilon_iterations: 150
+      epsilon_initial: 0.5
+      epsilon_iterations: 1500
       epsilon_final: 0.01
-      replay_alpha: 0.6
+      replay_alpha:
+        grid_search: [0.6, 0.0]
       replay_epsilon: 0.01
       replay_eta: 0.5
-      replay_beta_iterations: 150
-      buffer_size: 3200
+      replay_beta_iterations: 1500
+      buffer_size: 
+        grid_search: [16384, 32768]
       dueling: True
       model: lstm
       model_config:
         hidden_size: 64
-        hidden_layers: 2
+        hidden_layers: 1

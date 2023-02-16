@@ -1,3 +1,4 @@
+# NOTE: This was set up to allow experiments to be run on the Aalto cluster.  Shouldn't need separate configs anymore.
 """Simple script for launching experiments"""
 import argparse
 

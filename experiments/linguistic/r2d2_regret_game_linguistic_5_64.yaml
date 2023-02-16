@@ -1,0 +1,41 @@
+r2d2_regret_game_linguistic_5_64:
+  stop:
+    iterations: 2000
+  trainer: regret_game
+  num_seeds: 4
+  config:
+    max_steps: 200
+    round_iterations: 200
+    burn_in_iterations: 2000
+    weight_decay: 0.0
+    alice_episodes: 32
+    bob_episodes: 32
+    eval_iterations: 40
+    eval_episodes: 64
+    env: linguistic
+    env_config:
+      stages: 64
+      actions: 5
+    learner: R2D2
+    learner_config:
+      num_batches: 16
+      batch_size: 32
+      sync_iterations: 20
+      learning_starts: 80
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 1500
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.5
+      replay_beta_iterations: 1500
+      buffer_size: 32768
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 256
+        hidden_layers: 1
+      lr: 0.001

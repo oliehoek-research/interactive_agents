@@ -13,8 +13,9 @@ class ListenerEnv(MultiagentEnv):
         self._num_stages = config.get("stages", 100)
         self._num_cues = config.get("cues", 10)
         self._agent_id = config.get("agent_id", "listener")
+        self._identity = config.get("identity", False)
 
-        self.observation_spaces = self._wrap(Box(0, 1, shape=(self._num_cues,)))
+        self.observation_spaces = self._wrap(Box(0, 1, shape=(self._num_cues * 2,)))
         self.action_spaces = self._wrap(Discrete(self._num_cues))
 
         self._stage = None
@@ -28,12 +29,15 @@ class ListenerEnv(MultiagentEnv):
         return item[self._agent_id]
 
     def reset(self):
-        self._mapping = np.random.permutation(self._num_cues)
+        if self._identity:
+            self._mapping = np.arange(self._num_cues)
+        else:
+            self._mapping = np.random.permutation(self._num_cues)
         
         self._stage = 0
         self._cue = np.random.randint(self._num_cues)
 
-        obs = np.zeros(self._num_cues)
+        obs = np.zeros(self._num_cues * 2)
         obs[self._cue] = 1
         
         return self._wrap(obs)
@@ -46,8 +50,9 @@ class ListenerEnv(MultiagentEnv):
         self._stage += 1
         done = (self._stage >= self._num_stages)
 
-        obs = np.zeros(self._num_cues)
+        obs = np.zeros(self._num_cues * 2)
         if not done:
+            obs[self._num_cues + self._mapping[self._cue]] = 1  # NOTE: Need to make sure the learner can observe the previous cue
             self._cue = np.random.randint(self._num_cues)
             obs[self._cue] = 1
 
