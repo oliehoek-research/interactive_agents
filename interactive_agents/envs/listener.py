@@ -1,15 +1,16 @@
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 
-from .common import MultiagentEnv
+from .common import SyncEnv
 
-class ListenerEnv(MultiagentEnv):
+class Listener(SyncEnv):
     """
     In each stage, the agent 'listens' for one-hot encoded cues, and must then 
-    take the appropriate action for the given cue to receive a reward.
+    take the appropriate action for the given cue to receive a reward.  After
+    each action, the listener observes the action it should have taken
     """
 
-    def __init__(self, config, spec_only=False):  # NOTE: Do we ever actually use "spec_only" anywhere?
+    def __init__(self, config={}):
         self._num_stages = config.get("stages", 100)
         self._num_cues = config.get("cues", 10)
         self._agent_id = config.get("agent_id", "listener")
@@ -17,6 +18,8 @@ class ListenerEnv(MultiagentEnv):
 
         self.observation_spaces = self._wrap(Box(0, 1, shape=(self._num_cues * 2,)))
         self.action_spaces = self._wrap(Discrete(self._num_cues))
+
+        self._rng = None
 
         self._stage = None
         self._cue = None
@@ -28,14 +31,19 @@ class ListenerEnv(MultiagentEnv):
     def _unwrap(self, item):
         return item[self._agent_id]
 
-    def reset(self):
+    def reset(self, seed=None):
+        if seed is not None:
+            self._rng = np.random.default_rng(seed=seed)
+        elif self._rng is None:
+            self._rng = np.random.default_rng()
+
         if self._identity:
             self._mapping = np.arange(self._num_cues)
         else:
-            self._mapping = np.random.permutation(self._num_cues)
+            self._mapping = self._rng.permutation(self._num_cues)
         
         self._stage = 0
-        self._cue = np.random.randint(self._num_cues)
+        self._cue = self._rng.integers(self._num_cues)
 
         obs = np.zeros(self._num_cues * 2)
         obs[self._cue] = 1
@@ -51,9 +59,14 @@ class ListenerEnv(MultiagentEnv):
         done = (self._stage >= self._num_stages)
 
         obs = np.zeros(self._num_cues * 2)
+        obs[self._num_cues + self._mapping[self._cue]] = 1 
+        
         if not done:
-            obs[self._num_cues + self._mapping[self._cue]] = 1  # NOTE: Need to make sure the learner can observe the previous cue
-            self._cue = np.random.randint(self._num_cues)
+            self._cue = self._rng.integers(self._num_cues)
             obs[self._cue] = 1
 
-        return self._wrap(obs), self._wrap(reward), self._wrap(done), None
+        return self._wrap(obs), \
+               self._wrap(reward), \
+               self._wrap(done), \
+               self._wrap(False), \
+               None

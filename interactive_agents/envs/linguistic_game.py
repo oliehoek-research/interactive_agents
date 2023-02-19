@@ -1,12 +1,8 @@
 from gym.spaces import Discrete, Box
 import numpy as np
 
-from .common import MultiagentEnv
-
-# NOTE: This enviroment is better suited to the AEC representation, but AEC is hard to integrate with RL - how hard would this actually be?
-# NOTE: There is a simpler speaker-listener scenario, where only the listener actually takes actions
-# NOTE: Behavioral cloning would be a good starting point to test the representational complexity of this task
-class LinguisticCoordination(MultiagentEnv):
+# NOTE: This enviroment is better suited to the AEC representation
+class LinguisticCoordination:
     """
     The 'linguistic' coordination game, in which a speaker privately observes
     a cue which determines the optimal joint action, and uses a 'cheap-talk'

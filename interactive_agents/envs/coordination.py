@@ -1,18 +1,20 @@
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 
-from .common import MultiagentEnv
+from .common import SyncEnv
 
-class CoordinationGame(MultiagentEnv):
+class Coordination(SyncEnv):
     """
     The N-player repeated coordination game.  Players observe all other player's
     previous actions as concatenated one-hot vectors.
 
     Supports 'focal point' actions that have slightly smaller payoffs, and
-    suppots permuting action IDs used to implement Other-Play.
+    supports permuting action IDs used to implement Other-Play.  Also allows
+    us to specify that other agents should all play a fixed action that is
+    selected randomly at the start of each episode.
     """
 
-    def __init__(self, config={}, spec_only=False):
+    def __init__(self, config={}):
         self._num_stages = config.get("stages", 5)
         self._num_actions = config.get("actions", 8)
         self._num_players = config.get("players", 2)
@@ -28,27 +30,32 @@ class CoordinationGame(MultiagentEnv):
 
         self.observation_spaces = {}
         self.action_spaces = {}
+        self._truncated = {}
 
         for pid in self._pids:
             if (not self._meta_learning) or "agent_0" == pid:
                 self.observation_spaces[pid] = Box(0, 1, shape=(self._obs_size,))
                 self.action_spaces[pid] = Discrete(self._num_actions)
+                self._truncated[pid] = False
         
         self._current_stage = 0
         self._num_episodes = 0
+
+        self._rng = None
 
         # Action permutations for other-play
         self._forward_permutations = None
         self._backward_permutations = None
 
-        # Fixed agent action
+        # Fixed agent action for meta-learning
         self._fixed_agent_action = None
 
         # Variables used for visualization
         self._prev = []
         self._last_obs = None
 
-    def _new_permutations(self):  # TODO: Implement unit tests to make sure this works properly (sample tests are available in the 'junk/other_play_test.py' script)
+    # TODO: Implement unit tests to make sure this works properly (sample tests are available in the 'junk/other_play_test.py' script)
+    def _new_permutations(self):
         self._forward_permutations = {}
         self._backward_permutations = {}
         
@@ -56,10 +63,10 @@ class CoordinationGame(MultiagentEnv):
             if 0 == policy_idx:
                 forward = np.arange(self._num_actions)
             elif self._focal_point:
-                forward = 1 + np.random.permutation(self._num_actions - 1)
-                forward = np.concatenate([np.zeros(1,dtype=np.int64), forward])
+                forward = 1 + self._rng.permutation(self._num_actions - 1)
+                forward = np.concatenate((np.zeros(1,dtype=np.int64), forward))
             else:
-                forward = np.random.permutation(self._num_actions)
+                forward = self._rng.permutation(self._num_actions)
 
             backward = np.zeros(self._num_actions, dtype=np.int64)
             for idx in range(self._num_actions):
@@ -74,16 +81,16 @@ class CoordinationGame(MultiagentEnv):
             obs[pid] = np.zeros(self._obs_size)
             index = 0
 
-            for id, action in actions.items():
-                if pid != id:
-                    action = self._backward_permutations[pid][action]
+            for other_pid in self._pids:
+                if pid != other_pid:
+                    action = self._backward_permutations[pid][actions[other_pid]]
                     obs[pid][index + action] = 1
                     index += self._num_actions
         
         return obs
 
     def _reset_fixed_action(self):
-        self._fixed_agent_action = np.random.randint(self._num_actions)
+        self._fixed_agent_action = self._rng.integers(self._num_actions)
 
     def _learning_pids(self):
         if self._meta_learning:
@@ -108,9 +115,9 @@ class CoordinationGame(MultiagentEnv):
             for pid in pids:
                 index = 0
 
-                for id, action in actions.items():
-                    if pid != id:
-                        obs[pid][index + action] = 1
+                for other_pid in self._pids:
+                    if pid != other_pid:
+                        obs[pid][index + actions[other_pid]] = 1
                         index += self._num_actions
         
         return obs
@@ -120,7 +127,7 @@ class CoordinationGame(MultiagentEnv):
 
         # Generate reward noise if needed
         if self._noise > 0:
-            noise = self._noise * np.random.normal()
+            noise = self._noise * self._rng.normal()
         else:
             noise = 0
 
@@ -145,7 +152,12 @@ class CoordinationGame(MultiagentEnv):
 
         return rewards, dones
 
-    def reset(self):
+    def reset(self, seed=None):
+        if seed is not None:
+            self._rng = np.random.default_rng(seed=seed)
+        elif self._rng is None:
+            self._rng = np.random.default_rng()
+
         self._current_stage = 0
         self._prev = []
 
@@ -157,8 +169,8 @@ class CoordinationGame(MultiagentEnv):
 
         return self._obs()
 
-    def step(self, actions):  # NOTE: This wrapper for the step function just handles the other-play permutations
-        actions = actions.copy()  # NOTE: The action array will be used for learning, so don't modify it
+    def step(self, actions):  # Wrapper to support action permutation
+        actions = actions.copy()  # Need a copy we can modify
 
         if self._meta_learning:
             actions = self._expand_actions(actions)
@@ -171,10 +183,12 @@ class CoordinationGame(MultiagentEnv):
         else:
             obs = self._obs(actions)
         
-        rewards, dones = self._step(actions)
+        rewards, dones= self._step(actions)
 
-        return obs, rewards, dones, None
+        return obs, rewards, dones, self._truncated, None
 
+    # TODO: Implement the "render" method from the Gym/PettingZoo API
+    
     def visualize(self,
                   policies={},
                   policy_fn=None,

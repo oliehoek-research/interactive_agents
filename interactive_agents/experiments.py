@@ -16,18 +16,22 @@ class Trial:
         self.seed = seed
 
 
-def get_directory(base_path, name, use_existing=False):
+def get_directory(base_path, name, use_existing=False, index_digits=3):
     path = os.path.join(base_path, name)
     
     idx = 0
     while not use_existing and os.path.exists(path):
         idx += 1
-        path = os.path.join(base_path, name + "_" + str(idx))
+        path = os.path.join(base_path, name + "_" + str(idx).zfill(index_digits))
     
     os.makedirs(path, exist_ok=True)
     return path
 
-
+# NOTE: Saves the following meta-data in a .yaml file:
+# - timestamp at which the experiment folder was created (or recreated)
+# - current git commit when the experiment folder was created (or recreated)
+#
+# This meta-data may be overwritten if we launch new seeds in the same directory
 def save_metadata(path, use_existing=False):
     metadata = {"timestamp": datetime.utcnow().isoformat()}
 
@@ -65,6 +69,7 @@ def load_configs(config_files):
     
     return experiments
 
+# NOTE: Where is this used?
 # TODO: We may eventually want to be able to continue an individual trial, rather than restarting it
 def load_trial(path):
     with open(os.path.join(path, "config.yaml")) as f:
@@ -97,15 +102,18 @@ def setup_trial(output_path, name, config, seed):
     return Trial(path, name, config, seed)
 
 
+# NOTE: If "use_existing=True", then we will not create a new directory for this 
+# experiment if one already exists, though we may create directories for new seeds.
 def setup_experiment(output_path, name, config, use_existing):
     path = get_directory(output_path, name, use_existing)
 
     # Save experiment configuration
-    save_config(path, name, config, use_existing)
+    save_config(path, name, config, use_existing)  # NOTE: If "use_existing=True", this may overwrite an existing config (without checking that it is the same)
 
     # Save experiment-wide metadata
-    save_metadata(path, use_existing)
+    save_metadata(path, use_existing)  # NOTE: What metadata gets saved?
 
+    # NOTE: This gets overridden by the command-line options
     # Get random seeds
     num_seeds = config.get("num_seeds", 1)
     seeds = config.get("seeds", list(range(num_seeds)))
@@ -114,18 +122,19 @@ def setup_experiment(output_path, name, config, use_existing):
     return [setup_trial(path, name, config, seed) for seed in seeds]
 
 
-def setup_experiments(experiments, output_path, use_existing=False):
+# NOTE: This is the main method for configuring experiment
+def setup_experiments(experiments, output_path, use_existing=False):  # NOTE: What does "use_existing" do?
     trials = []
 
-    for name, config in experiments.items():
-        variations = grid_search(name, config)
+    for name, config in experiments.items():  # NOTE: Accepts multiple config files 
+        variations = grid_search(name, config)  # NOTE: Check for "grid_search" keys for hyperparameter sweeps
     
-        if variations is None:
-            trials += setup_experiment(output_path, name, config, use_existing)
-        else:
-            path = get_directory(output_path, name, use_existing)
+        if variations is None:  # NOTE: Only running a sinlge configuration
+            trials += setup_experiment(output_path, name, config, use_existing)  # NOTE: Sets-up and individual experiment for multiple seeds
+        else:  # NOTE: Hyperparameter sweep
+            path = get_directory(output_path, name, use_existing)  # NOTE: What does this do?
 
-            for var_name, var_config in variations.items():
+            for var_name, var_config in variations.items():  # NOTE: Iterate over hyperparameter configurations
                 trials += setup_experiment(path, var_name, var_config, use_existing=True)
 
     return trials

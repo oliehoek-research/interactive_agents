@@ -1,5 +1,5 @@
 """Implements grid-search over training configurations"""
-from collections import namedtuple
+from collections import namedtuple  # NOTE: Doesn't import anything from outside the python standard library
 from copy import deepcopy
 
 Parameter = namedtuple("Parameter", ["key", "value"])

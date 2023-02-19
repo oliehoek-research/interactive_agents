@@ -1,4 +1,13 @@
-"""Simple Torch implementation of R2D2"""
+"""
+Implementation of the simplified action 
+decoder (SAD) as described in the paper "Simplified 
+action decoder for deep multi-agent reinforcement 
+learning." (Hu et al. 2019).
+
+Really just a modified version of R2D2 that returns two actions, 
+one exploration and one exploitation, and allowing both of these 
+actions to be seen by the other players.
+"""
 from collections import defaultdict
 import numpy as np
 from typing import Optional, Tuple
@@ -9,14 +18,13 @@ from torch.optim import Adam
 
 from interactive_agents.training.learners.models import build_model
 from interactive_agents.training.learners.priority_tree import PriorityTree
-from interactive_agents.sampling import Batch
+from interactive_agents.sampling import Batch  # NOTE: The only thing we use this for is the "key" strings
 
-class QNetwork(nn.Module):
-    """Feature layers defined by the config dict. Supports dueling networks."""
+class SADNetwork(nn.Module):
 
-    def __init__(self, obs_space, action_space, config, dueling=False):
-        super(QNetwork, self).__init__()
-        self._num_actions = action_space.n
+    def __init__(self, obs_size, num_actions, model_config, dueling=False):
+        super(SADNetwork, self).__init__()
+        self._num_actions = num_actions
         self._dueling = dueling
 
         if dueling:
@@ -24,31 +32,40 @@ class QNetwork(nn.Module):
         else:
             num_features = self._num_actions
 
-        self._model = build_model(obs_space.shape, num_features, config)
+        # NOTE: For now, only support vector observations
+        input_shape = (obs_size + num_actions,)
+        self._model = build_model(input_shape, num_features, model_config)
 
     # NOTE: The type of "state" only works for LSTM, so does this serialize with GRU?
     def forward(self, 
-            obs: torch.Tensor, 
+            obs: torch.Tensor,
+            other_action: torch.Tensor,  #NOTE: We assume these are input 1-hot encoded
             state: Tuple[torch.Tensor, torch.Tensor]):
+        
+        # NOTE: Why was this included, why was it removed?
         # if state is None:
         #    state = self._model.initial_state(obs.shape[1], str(obs.device))
+        
+        inputs = torch.cat((obs, other_action), dim=-1)
         features, state = self._model(obs, state)
 
         if self._dueling:
             A = features[:,:,:self._num_actions]
             V = features[:,:,-1:]
-            Q = V + A - A.mean(dim=-1, keepdim=True)  # NOTE: Does this help?
+            Q = V + A - A.mean(dim=-1, keepdim=True)  # NOTE: Prevents A from learning the value function itself
         else:
             Q = features
 
         return Q, state
 
+    # NOTE: How do we trace-export an auxilliary method like this?  Maybe one of the reasonse we used scripting?
     @torch.jit.export
     def initial_state(self, batch_size: int=1, device: str="cpu"):
         return self._model.initial_state(batch_size, device)
 
 
-class QPolicy(nn.Module):
+# NOTE: This is only used for serialization, don't need it at the moment
+class SADPolicy(nn.Module):
     """Torchscript-compatible wrapper for greedy policies from a Q-network"""
 
     def __init__(self, model):
@@ -65,7 +82,7 @@ class QPolicy(nn.Module):
     def initial_state(self, batch_size: int=1, device: str="cpu"):
         return self._model.initial_state(batch_size, device)
 
-
+# NOTE: Generalize this so it can handle arbitrary imputs
 class RecurrentReplayBuffer:
     
     def __init__(self, capacity, prioritize=True, device="cpu"):
@@ -83,8 +100,8 @@ class RecurrentReplayBuffer:
     def add(self, samples, priorities):
         indices = []
         for sample in samples:
-            for key in sample:
-                sample[key] = torch.as_tensor(sample[key], device=self._device)
+            for key in sample:  # NOTE: Make sure things are actuallly getting stored on the GPU
+                sample[key] = torch.as_tensor(sample[key], device=self._device)  # NOTE: Assumes all inputs are either numpy arrays or tensors
 
             if len(self._samples) < self._capacity:
                 self._samples.append(sample)
@@ -134,8 +151,8 @@ class RecurrentReplayBuffer:
 
         return batch, weights, seq_lens, indices
 
-
-class R2D2Agent:
+# NOTE: Bake these into the learner itself
+class R2D2Agent:  # NOTE: Represents an agent with a private state
 
     def __init__(self, actor, state):
         self._actor = actor
@@ -147,7 +164,9 @@ class R2D2Agent:
         return action, {
             "q_values": q_values,
             "action_q": q_values[action]
-        }
+        }  # NOTE: Seems that we already support returning extra information, just doesn't get passed to other agents
+
+# NOTE: Need to add support for batches execution for better GPU utilization
 
 # NOTE: Move some of this code outside of R2D2 - also, we aren't really doing distributed training
 class R2D2Policy:
@@ -170,7 +189,7 @@ class R2D2Policy:
         with torch.no_grad():
             obs = torch.as_tensor(obs, 
                 dtype=torch.float32, device=self._device)
-            obs = obs.unsqueeze(0)  # Add batch dimension
+            obs = obs.unsqueeze(0)  # Add batch dimension  # NOTE: Ideally we won't use this in the future
             obs = obs.unsqueeze(0)  # Add time dimension (for RNNs)
 
             # state = state.detach()  # NOTE: May not be necessary in no_grad() context
@@ -191,18 +210,14 @@ class R2D2Policy:
         return R2D2Agent(self, self._q_network.initial_state(1, self._device))
 
     def update(self, updates):
-        self._epsilon = updates["epsilon"]
+        self._epsilon = updates["epsilon"]  # NOTE: Now need to return both exploration and exploitation actions
         self._q_network.load_state_dict(updates["network"])
 
 
 # NOTE: To implement simplified action decoders, we will need something more flexible
-class R2D2:
+class R2D2_SAD:
 
-    def __init__(self, 
-            obs_space, 
-            action_space, 
-            config={}, 
-            device='cpu'):
+    def __init__(self, obs_space, action_space, config={}, device='cpu'):
         self._obs_space = obs_space
         self._action_space = action_space
         self._iteration_episodes = config.get("iteration_episodes", 128)
@@ -239,16 +254,12 @@ class R2D2:
             action_space, self._network_config, self._dueling)
         self._target_network = QNetwork(obs_space, 
             action_space, self._network_config, self._dueling)
-        
-        # NOTE: Cannot do backpropagation on compiled modules
-        # self._online_network = torch.jit.script(self._online_network)
-        # self._target_network = torch.jit.script(self._target_network)
 
-        self._online_network.to(device)
-        self._target_network.to(device)
+        self._online_q.to(device)
+        self._target_q.to(device)
 
         # Optimizer
-        self._optimizer = Adam(self._online_network.parameters(), lr=config.get("lr", 0.01))
+        self._optimizer = Adam(self._online_q.parameters(), lr=config.get("lr", 0.01))
 
         # Track number of training iterations
         self._current_iteration = 0
@@ -326,7 +337,8 @@ class R2D2:
         
         return stats
 
-    def learn(self, episodes):
+    # NOTE: This will change as we add new data
+    def learn(self, episodes):  # NOTE: For offline RL, we would want managing data to be separate from the training loop
         stats = {}
 
         # Compute initial priorities and add new episodes to replay buffer
@@ -368,24 +380,28 @@ class R2D2:
         self._current_iteration += 1
 
         return stats
-    
-    def make_policy(self, eval=False):
-        epsilon = 0.0 if eval else self._epsilon
-        return R2D2Policy(obs_space=self._obs_space,
-                          action_space=self._action_space, 
-                          network_config=self._network_config,
-                          dueling=self._dueling,
-                          device=self._device,
-                          epsilon=epsilon)
-    
-    def get_actor_update(self, eval=False):
-        return {
-            "network": self._online_network.state_dict(),
-            "epsilon": 0.0 if eval else self._epsilon
-        }
 
-    def export_policy(self):
-        policy = torch.jit.script(QPolicy(self._online_network))
-        policy.eval()  # NOTE: Need to explicitly switch to eval mode
+    def act(self, obs, other_actions, states):
+        with torch.no_grad():
+            obs = torch.as_tensor(obs, 
+                dtype=torch.float32, device=self._device)
+            obs = obs.unsqueeze(0)  # Add batch dimension  # NOTE: Ideally we won't use this in the future
+            obs = obs.unsqueeze(0)  # Add time dimension (for RNNs)
 
-        return torch.jit.freeze(policy, ["initial_state"])
+            # state = state.detach()  # NOTE: May not be necessary in no_grad() context
+
+            q_values, state = self._q_network(obs, state)
+            q_values = q_values.detach().cpu().numpy()  # Convert back to a numpy array
+            q_values = q_values.squeeze(0)  # Remove time dimension
+            q_values = q_values.squeeze(0)  # Remove batch dimension
+
+            if np.random.random() <= self._epsilon:
+                action = self._action_space.sample()
+            else:
+                action = q_values.argmax()
+
+        return action, q_values, state
+
+    # NOTE: This will create an initial state on the same device as the policy itself
+    def initial_state(self, batch_size):
+        pass

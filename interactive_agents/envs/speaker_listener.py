@@ -1,13 +1,14 @@
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 
-from .common import MultiagentEnv
+from .common import SyncEnv
 
-class SpeakerListenerEnv(MultiagentEnv):
+class SpeakerListener(SyncEnv):
 
-    def __init__(self, config, spec_only=False):  # NOTE: Do we ever actually use "spec_only" anywhere?
+    def __init__(self, config={}):  # NOTE: Do we ever actually use "spec_only" anywhere?
         self._num_stages = config.get("stages", 64)
         self._num_cues = config.get("cues", 5)
+        self._other_play = config.get("other_play", False)
         self._meta_learning = config.get("meta_learning", False)
 
         self.observation_spaces = {
@@ -16,20 +17,32 @@ class SpeakerListenerEnv(MultiagentEnv):
         self.action_spaces = {
             "speaker": Discrete(self._num_cues)
         }
+        self._truncated = {"speaker": False}
 
         if not self._meta_learning:
             self.observation_spaces["listener"] = Box(0, 1, shape=(self._num_cues * 2,))
             self.action_spaces["listener"] = Discrete(self._num_cues)
+            self._truncated["listener"] = False
+
+        self._rng = None
 
         self._stage = None
         self._current_cue = None
         self._previous_cue = None
         self._signal = None
 
+        # Channel perumtation for other-play
+        self._permutation = None
+
         # For the meta-learning case only
         self._mapping = None
 
-    def reset(self):
+    def reset(self, seed=None):
+        if seed is not None:
+            self._rng = np.random.default_rng(seed=seed)
+        elif self._rng is None:
+            self._rng = np.random.default_rng()
+
         self._current_cue = np.random.randint(self._num_cues)
         self._previous_cue = None
         self._stage = 0
@@ -43,6 +56,9 @@ class SpeakerListenerEnv(MultiagentEnv):
         else:
             self._mapping = np.random.permutation(self._num_cues)
             self._signal = np.random.randint(self._num_cues)
+        
+        if self._other_play:
+            self._permutation = self._rng.permutation(self._num_cues)
 
         return obs
 
@@ -52,7 +68,10 @@ class SpeakerListenerEnv(MultiagentEnv):
         else:
             listener_action = self._mapping[self._signal]
 
-        self._signal = action["speaker"]
+        if self._other_play:
+            self._signal = self._permutation[action["speaker"]]
+        else:
+            self._signal = action["speaker"]
 
         self._stage += 1
         done = (self._stage >= self._num_stages)
@@ -61,7 +80,7 @@ class SpeakerListenerEnv(MultiagentEnv):
 
         obs = {}
         rewards = {}
-        dones = {}
+        terminated = {}
 
         if not self._meta_learning:
             listener_obs = np.zeros(self._num_cues * 2)
@@ -72,17 +91,17 @@ class SpeakerListenerEnv(MultiagentEnv):
 
             obs["listener"] = listener_obs
             rewards["listener"] = reward
-            dones["listener"] = done
+            terminated["listener"] = done
 
         self._previous_cue = self._current_cue
         self._current_cue = np.random.randint(self._num_cues)
 
         speaker_obs = np.zeros(self._num_cues * 2)
         speaker_obs[self._current_cue] = 1
-        speaker_obs[self._num_cues + listener_action]
+        speaker_obs[self._num_cues + listener_action] = 1
         
         obs["speaker"] = speaker_obs
         rewards["speaker"] = reward
-        dones["speaker"] = done
+        terminated["speaker"] = done
 
-        return obs, rewards, dones, None
+        return obs, rewards, terminated, self._truncated, None

@@ -1,16 +1,10 @@
-"""
-Common utilities and base-classes for our multi-agent environments
-"""
 from pettingzoo import ParallelEnv
 
-class MultiagentEnv(ParallelEnv):
+class SyncEnv(ParallelEnv):
     """
-    A simple extension of the PettingZoo parallel API that serves as the base
-    class for all of our environments.
-
-    Assumes the set of agents is fixed, and provides the 'agents' and 'possible_agents'
-    properties, which just return the list of observation space keys. Also provides a 
-    dummy 'visualize()' method which environments can optionally implement.
+    A convenience class that makes it easier to implement the
+    PettingZoo ParallelEnv interface.  Assumes that the set of
+    agents is always the same for each episode and time step.
     """
 
     @property
@@ -18,8 +12,11 @@ class MultiagentEnv(ParallelEnv):
         return list(self.observation_spaces.keys())
 
     @property
-    def possible_agents(self):
+    def possible_agents(self):  # NOTE: Will the ParallelEnv class do this for us?
         return list(self.observation_spaces.keys())  
+    
+    def observation_space(self, agent):
+        return self.observation_spaces[agent]
 
-    def visualize(self, **kwargs):
-        raise NotImplementedError("Environment does not support visualization")
+    def action_space(self, agent):
+        return self.action_spaces[agent]

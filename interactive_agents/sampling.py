@@ -4,7 +4,7 @@ import numpy as np
 
 import torch
 
-class Batch(dict):
+class Batch(dict):  # NOTE: Seems to organize batches by the "policy" they are associated with, rather than the "agent"
     """A dictionary object representing a multi-agent experience batch"""
 
     OBS = "obs"
@@ -16,7 +16,7 @@ class Batch(dict):
     def __init__(self, batches={}, episodes=0, timesteps=0):
         super(Batch, self).__init__(batches)
         self._episodes = episodes
-        self._timesteps = timesteps
+        self._timesteps = timesteps  # NOTE: What is this used for?
 
     @property
     def episodes(self):
@@ -26,7 +26,7 @@ class Batch(dict):
     def timesteps(self):
         return self._timesteps
 
-    def policy_batches(self, policy_ids):
+    def policy_batches(self, policy_ids):  # NOTE: Seems to return a batch associated with a single policy
         batch = {}
         for pid in policy_ids:
             if pid in self:
@@ -34,7 +34,7 @@ class Batch(dict):
         
         return Batch(batch, self._episodes, self._timesteps)
 
-    def policy_batch(self, policy_id):
+    def policy_batch(self, policy_id):  # NOTE: Just a utility that returns a single policy
         return self.policy_batches([policy_id])
 
     def extend(self, batch):
@@ -47,7 +47,7 @@ class Batch(dict):
         self._episodes += batch.episodes
         self._timesteps += batch.timesteps
 
-    def statistics(self, alt_names=None):
+    def statistics(self, alt_names=None):  # NOTE: Statistics computed internally by the batch itself
         if alt_names is None:
             alt_names = {pid:pid for pid in self.keys()}
         
@@ -85,7 +85,7 @@ class Batch(dict):
         return stats
 
 
-class BatchBuilder:
+class BatchBuilder:  # NOTE: Basically a batch with an internal state corresponding to the current episode
     """Used to record a multi-agent batch during sampling"""
 
     def __init__(self):
@@ -153,6 +153,7 @@ class BatchBuilder:
         return Batch(self._policy_batches, self._episodes, self._timesteps)
 
 
+# NOTE: Seems to be used to de-serialize an arbitrary policy
 class FrozenAgent:
 
     def __init__(self, model, device):
@@ -192,8 +193,10 @@ class FrozenPolicy:
         return self._model
 
 
+# NOTE: Need to update to the latest PettingZoo interface
+# NOTE: This needs to change quite a bit, also needs to support vectored environments
 # TODO: Enable support for multiple policies maintained by a single actor (needed for SAD, CC methods)
-def sample(env, policies, num_episodes=128, max_steps=1e6, policy_fn=None):
+def sample(env, policies, num_episodes=128, max_steps=1e6, policy_fn=None):  # NOTE: Accepts a single environment, rather than a batch
     """Generates a batch of episodes using the given policies"""
     batch = BatchBuilder()
     

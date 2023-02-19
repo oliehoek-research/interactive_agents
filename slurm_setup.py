@@ -17,7 +17,7 @@ def parse_args():
     # NOTE: How should we change the command line arguments?
     parser.add_argument("config_files", type=str, nargs="+",
                         help="provide one or more experiment config files")
-    parser.add_argument("-o", "--output-path", type=str, default="./results/debug",
+    parser.add_argument("-o", "--output-path", type=str, default="./results/debug",  # NOTE: In the current setup this always gets overridden
                         help="directory in which we should save results")  # NOTE: Potential issue, we may end up with relative, rather than absolute paths
     
     parser.add_argument("--num-seeds", type=int,
@@ -46,7 +46,7 @@ if __name__ == '__main__':
         config["arguments"] = unknown
 
     # Setup experiment  # NOTE: On SLURM, default to 
-    trials = setup_experiments(experiments, args.output_path, use_existing=True)
+    trials = setup_experiments(experiments, args.output_path, use_existing=True)  # NOTE: Is this reused by the local script?
 
     # Print trial paths
     for trial in trials:

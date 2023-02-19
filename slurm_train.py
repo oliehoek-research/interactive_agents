@@ -2,12 +2,15 @@
 # of the local training script that parallelizes across a SLURM
 # cluster.  Implementation is a bit awkward.
 #
-# Should stick with Singularity as a container environemnt for 
+# Should stick with Singularity as a container environment for 
 # now.  Easy to port to docker later.
 # 
 # Note, this script launches a local singularity container, what
 # non-standard libraries does it really need to set things up?
 # - I think just PyYAML
+# 
+# We should probably combine this with the "slurm_setup.py" script, in 
+# general we should be add pure python libraries.
 # 
 """Use this script to launch experiments on a SLURM cluster.
 
@@ -84,26 +87,27 @@ if __name__ == '__main__':
         f"{args.output_path}:/mnt/output",
         args.image, 
         "python3", 
-        "slurm_setup.py",
+        "slurm_setup.py",  # NOTE: This is really not necessary, designed this so we could run without any python dependencies on the login node
         "--output-path",
         "/mnt/output"
     ]
-    setup_command.extend(unknown)
+    setup_command.extend(unknown)  # NOTE: This will pass the command-line arguments that are used by the setup script
 
     setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
 
-    # NOTE: The script returns, through the container output, 
+    # NOTE: The script returns, through the container output, a list of paths to folders set-up for each experiment
     paths = setup_process.stdout.decode("utf-8").splitlines()  # NOTE: Make sure to decode stdout bytestring before parsing it
 
+    # NOTE: This is not itself a command to launch SLURM, but a command that will be passed to SLURM to execute
     # Launch trials in SLURM
     run_command = [
         "singularity", 
         "exec",
         "--bind",
-        f"{args.output_path}:/mnt/output",
+        f"{args.output_path}:/mnt/output",  # NOTE: The first on should be the local path, the second the path within the container
         args.image, 
         "python3", 
-        "slurm_run.py",
+        "slurm_run.py",  # NOTE: This is the script that actually runs experiments in a container on a SLURM Node
         "--flush-secs",
         args.flush_secs
     ]
@@ -111,7 +115,7 @@ if __name__ == '__main__':
     if args.verbose:
         run_command.append("verbose")
 
-    run_command.extend(paths)
+    run_command.extend(paths) # NOTE: Can't find a way to pass different arguments to different SLURM jobs (look into this)
 
     # Join Singularity command into a single string
     run_command = [f'"{token}"' for token in run_command]
@@ -123,13 +127,13 @@ if __name__ == '__main__':
         f"--partition={args.partition}",
         f"--qos={args.qos}",
         f"--time={args.time}",
-        f"--cpus-per-task={args.cpus_per_task}",
+        f"--cpus-per-task={args.cpus_per_task}",  # NOTE: Need support for GPUs as well
         f"--mem-per-cpu={args.mem_per_cpu}",
         f"--job-name={args.job_name}",
         f"--output={args.slurm_output}"
     ])
     slurm_command.append(f"--array=0-{len(paths) - 1}%{args.max_tasks}")
-    slurm_command.append("--wrap")
-    slurm_command.append(run_command)
+    slurm_command.append("--wrap")  # NOTE: This allows us to run sbatch without an actual batch script
+    slurm_command.append(run_command)  # NOTE: sbatch is smart enough to treat everything after "--wrap" as a script to run per job
 
-    subprocess.run(slurm_command)
+    subprocess.run(slurm_command)  # NOTE: Actually launch the slurm job

@@ -1,0 +1,3 @@
+[submodule "amanuensis"]
+	path = amanuensis
+	url = git@github.com:rtloftin/amanuensis.git

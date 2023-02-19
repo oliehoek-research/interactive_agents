@@ -1,16 +1,14 @@
-import gym
-from gym.wrappers import RecordVideo, TimeLimit
+import gymnasium as gym
+from gymnasium.wrappers import RecordVideo, TimeLimit
 import numpy as np
 import time
 
-from .common import MultiagentEnv
+from .common import SyncEnv
 
-class GymEnv(MultiagentEnv):
-    """
-    Multi-agent wrapper for single-agent OpenAI Gym environments.
-    """
+class GymEnv(SyncEnv):
+    """Multi-agent wrapper for single-agent OpenAI Gym environments."""
 
-    def __init__(self, config, spec_only=False):  # TODO: Allow config to specify preprocessor stack
+    def __init__(self, config={}):  # TODO: Allow config to specify preprocessor stack
         assert "name" in config, "must specify name of gym environment"
         self._env = gym.make(config.get("name"))
 
@@ -19,16 +17,17 @@ class GymEnv(MultiagentEnv):
         self.observation_spaces = {self._agent_id: self._env.observation_space}
         self.action_spaces = {self._agent_id: self._env.action_space}
     
-    def reset(self):
-        obs = self._env.reset()
+    def reset(self, seed=None):
+        obs, _ = self._env.reset(seed=seed)
         return {self._agent_id: obs}
     
     def step(self, action):
-        obs, rew, done, info = self._env.step(action[self._agent_id])
+        obs, rew, term, trunc, info = self._env.step(action[self._agent_id])
         obs = {self._agent_id: obs}
         rew = {self._agent_id: rew}
-        done = {self._agent_id: done}
-        return obs, rew, done, info
+        term = {self._agent_id: term}
+        trunc = {self._agent_id: trunc}
+        return obs, rew, term, trunc, info
     
     def visualize(self, 
                   policies={},

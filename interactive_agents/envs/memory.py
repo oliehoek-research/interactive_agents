@@ -1,16 +1,14 @@
-from gym.spaces import Discrete, Box
+from gymnasium.spaces import Discrete, Box
 import numpy as np
 
-from .common import MultiagentEnv
+from .common import SyncEnv
 
-class MemoryGame(MultiagentEnv):  # NOTE: What do they call this in the BSuite paper?
+class Memory(SyncEnv):
     """
-    Abstract T-maze environment with noisy observations.  Similar to BSuite.
-
-    Implemented as a multi-agent environment for compatability.
+    PettingZoo compatible implementation of the "Memory" environemnt from BSuite.
     """
 
-    def __init__(self, config, spec_only=False):
+    def __init__(self, config={}):
         self._length = config.get("length", 5)
         self._num_cues = config.get("num_cues", 2)
         self._noise = config.get("noise", 0.0)
@@ -20,15 +18,19 @@ class MemoryGame(MultiagentEnv):  # NOTE: What do they call this in the BSuite p
         self._obs_shape = (self._num_cues + 2,)
         self.observation_spaces = {self._agent_id: Box(0, 2, shape=self._obs_shape)}
         self.action_spaces = {self._agent_id: Discrete(self._num_cues)}
-  
+
+        self._truncated = {self._agent_id: False}
+
         self._current_step = 0
         self._current_cue = 0
+
+        self._rng = None
 
     def _obs(self):
         if 0 == self._noise:
             obs = np.zeros(self._obs_shape)
         else:
-            obs = np.random.uniform(0, self._noise, self._obs_shape)
+            obs = self._rng.uniform(0, self._noise, self._obs_shape)
 
         if 0 == self._current_step:
             obs[-2] += 1
@@ -38,15 +40,26 @@ class MemoryGame(MultiagentEnv):  # NOTE: What do they call this in the BSuite p
 
         return {self._agent_id: obs}
 
-    def reset(self):
+    def reset(self, seed=None):
+        if seed is not None:
+            self._rng = np.random.default_rng(seed=seed)
+        elif self._rng is None:
+            self._rng = np.random.default_rng()
+
         self._current_step = 0
-        self._current_cue = np.random.randint(self._num_cues)
+        self._current_cue = self._rng.integers(self._num_cues)
         return self._obs()
 
     def step(self, action):
         if self._current_step < self._length:
             self._current_step += 1
-            return self._obs(), {self._agent_id: 0}, {self._agent_id: False}, None
+            reward = 0
+            done = False
         else:
             reward = (1 if action[self._agent_id] == self._current_cue else 0)
-            return self._obs(), {self._agent_id: reward}, {self._agent_id: True}, None
+            done = True
+
+        reward = {self._agent_id: reward}
+        terminated = {self._agent_id: done}
+        
+        return self._obs(), reward, terminated, self._truncated, None

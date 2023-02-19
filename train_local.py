@@ -74,7 +74,7 @@ if __name__ == '__main__':
         config["arguments"] = unknown
 
     # Setup experiment
-    trial_configs = setup_experiments(experiments, args.output_path, use_existing=False)
+    trial_configs = setup_experiments(experiments, args.output_path, use_existing=False)  # NOTE: What does this return?
 
     # Limit Torch CPU parallelism  # NOTE: This must be set BEFORE we initialize the process pool
     torch.set_num_interop_threads(1)
