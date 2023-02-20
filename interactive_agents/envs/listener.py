@@ -19,8 +19,6 @@ class Listener(SyncEnv):
         self.observation_spaces = self._wrap(Box(0, 1, shape=(self._num_cues * 2,)))
         self.action_spaces = self._wrap(Discrete(self._num_cues))
 
-        self._rng = None
-
         self._stage = None
         self._cue = None
         self._mapping = None
@@ -32,18 +30,15 @@ class Listener(SyncEnv):
         return item[self._agent_id]
 
     def reset(self, seed=None):
-        if seed is not None:
-            self._rng = np.random.default_rng(seed=seed)
-        elif self._rng is None:
-            self._rng = np.random.default_rng()
+        self.seed(seed)
 
         if self._identity:
             self._mapping = np.arange(self._num_cues)
         else:
-            self._mapping = self._rng.permutation(self._num_cues)
+            self._mapping = self.rng.permutation(self._num_cues)
         
         self._stage = 0
-        self._cue = self._rng.integers(self._num_cues)
+        self._cue = self.rng.integers(self._num_cues)
 
         obs = np.zeros(self._num_cues * 2)
         obs[self._cue] = 1
@@ -62,7 +57,7 @@ class Listener(SyncEnv):
         obs[self._num_cues + self._mapping[self._cue]] = 1 
         
         if not done:
-            self._cue = self._rng.integers(self._num_cues)
+            self._cue = self.rng.integers(self._num_cues)
             obs[self._cue] = 1
 
         return self._wrap(obs), \

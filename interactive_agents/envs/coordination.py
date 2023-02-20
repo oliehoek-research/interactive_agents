@@ -41,8 +41,6 @@ class Coordination(SyncEnv):
         self._current_stage = 0
         self._num_episodes = 0
 
-        self._rng = None
-
         # Action permutations for other-play
         self._forward_permutations = None
         self._backward_permutations = None
@@ -63,10 +61,10 @@ class Coordination(SyncEnv):
             if 0 == policy_idx:
                 forward = np.arange(self._num_actions)
             elif self._focal_point:
-                forward = 1 + self._rng.permutation(self._num_actions - 1)
+                forward = 1 + self.rng.permutation(self._num_actions - 1)
                 forward = np.concatenate((np.zeros(1,dtype=np.int64), forward))
             else:
-                forward = self._rng.permutation(self._num_actions)
+                forward = self.rng.permutation(self._num_actions)
 
             backward = np.zeros(self._num_actions, dtype=np.int64)
             for idx in range(self._num_actions):
@@ -90,7 +88,7 @@ class Coordination(SyncEnv):
         return obs
 
     def _reset_fixed_action(self):
-        self._fixed_agent_action = self._rng.integers(self._num_actions)
+        self._fixed_agent_action = self.rng.integers(self._num_actions)
 
     def _learning_pids(self):
         if self._meta_learning:
@@ -127,7 +125,7 @@ class Coordination(SyncEnv):
 
         # Generate reward noise if needed
         if self._noise > 0:
-            noise = self._noise * self._rng.normal()
+            noise = self._noise * self.rng.normal()
         else:
             noise = 0
 
@@ -153,11 +151,7 @@ class Coordination(SyncEnv):
         return rewards, dones
 
     def reset(self, seed=None):
-        if seed is not None:
-            self._rng = np.random.default_rng(seed=seed)
-        elif self._rng is None:
-            self._rng = np.random.default_rng()
-
+        self.seed(seed)
         self._current_stage = 0
         self._prev = []
 

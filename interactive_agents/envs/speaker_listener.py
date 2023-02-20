@@ -23,9 +23,7 @@ class SpeakerListener(SyncEnv):
             self.observation_spaces["listener"] = Box(0, 1, shape=(self._num_cues * 2,))
             self.action_spaces["listener"] = Discrete(self._num_cues)
             self._truncated["listener"] = False
-
-        self._rng = None
-
+        
         self._stage = None
         self._current_cue = None
         self._previous_cue = None
@@ -38,12 +36,9 @@ class SpeakerListener(SyncEnv):
         self._mapping = None
 
     def reset(self, seed=None):
-        if seed is not None:
-            self._rng = np.random.default_rng(seed=seed)
-        elif self._rng is None:
-            self._rng = np.random.default_rng()
+        self.seed(seed)
 
-        self._current_cue = np.random.randint(self._num_cues)
+        self._current_cue = self.rng.integers(self._num_cues)
         self._previous_cue = None
         self._stage = 0
 
@@ -54,11 +49,11 @@ class SpeakerListener(SyncEnv):
         if not self._meta_learning:
             obs["listener"] = np.zeros(self._num_cues * 2)
         else:
-            self._mapping = np.random.permutation(self._num_cues)
-            self._signal = np.random.randint(self._num_cues)
+            self._mapping = self.rng.permutation(self._num_cues)
+            self._signal = self.rng.integers(self._num_cues)
         
         if self._other_play:
-            self._permutation = self._rng.permutation(self._num_cues)
+            self._permutation = self.rng.permutation(self._num_cues)
 
         return obs
 
@@ -94,7 +89,7 @@ class SpeakerListener(SyncEnv):
             terminated["listener"] = done
 
         self._previous_cue = self._current_cue
-        self._current_cue = np.random.randint(self._num_cues)
+        self._current_cue = self.rng.integers(self._num_cues)
 
         speaker_obs = np.zeros(self._num_cues * 2)
         speaker_obs[self._current_cue] = 1

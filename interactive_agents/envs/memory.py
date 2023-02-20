@@ -24,13 +24,11 @@ class Memory(SyncEnv):
         self._current_step = 0
         self._current_cue = 0
 
-        self._rng = None
-
     def _obs(self):
         if 0 == self._noise:
             obs = np.zeros(self._obs_shape)
         else:
-            obs = self._rng.uniform(0, self._noise, self._obs_shape)
+            obs = self.rng.uniform(0, self._noise, self._obs_shape)
 
         if 0 == self._current_step:
             obs[-2] += 1
@@ -41,13 +39,9 @@ class Memory(SyncEnv):
         return {self._agent_id: obs}
 
     def reset(self, seed=None):
-        if seed is not None:
-            self._rng = np.random.default_rng(seed=seed)
-        elif self._rng is None:
-            self._rng = np.random.default_rng()
-
+        self.seed(seed)
         self._current_step = 0
-        self._current_cue = self._rng.integers(self._num_cues)
+        self._current_cue = self.rng.integers(self._num_cues)
         return self._obs()
 
     def step(self, action):

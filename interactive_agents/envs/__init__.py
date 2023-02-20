@@ -1,4 +1,5 @@
 from .common import SyncEnv
+from .batched import BatchedEnv
 
 # TODO: At some point it might be cleaner to use importlib to do this
 def get_memory():
@@ -57,3 +58,6 @@ def get_env_class(name):
         raise ValueError(f"Environment '{name}' is not defined")
     
     return ENVS[name]()
+
+
+__all__ = []
