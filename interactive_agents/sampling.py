@@ -11,10 +11,11 @@ class Batch(dict):  # NOTE: Seems to organize batches by the "policy" they are a
     NEXT_OBS = "next_obs"
     ACTION = "actions"
     REWARD = "rewards"
-    DONE = "dones"
+    TERMINATED = "terminated"
+    TRUNCATED = "truncated"
 
     def __init__(self, batches={}, episodes=0, timesteps=0):
-        super(Batch, self).__init__(batches)
+        super(Batch, self).__init__(batches)  # NOTE: Each item in the dictionary is a list of dictionaries, with each being a single episode for a single agent
         self._episodes = episodes
         self._timesteps = timesteps  # NOTE: What is this used for?
 
@@ -84,12 +85,17 @@ class Batch(dict):  # NOTE: Seems to organize batches by the "policy" they are a
 
         return stats
 
-
+# NOTE: This does not seem to correctly handle the policy mapping, find out 
+# what is wrong. <- Need to look at what R2D2 itself expects.
+#
+# R2D2 seems to expect a list of dictionaries, where each dictionary corresponds 
+# to an individual trajectory.  (There are mre performant ways of doing this)
+#
 class BatchBuilder:  # NOTE: Basically a batch with an internal state corresponding to the current episode
     """Used to record a multi-agent batch during sampling"""
 
     def __init__(self):
-        self._policy_batches = defaultdict(list)
+        self._policy_batches = defaultdict(list)  # NOTE: Keys are policy IDs, what do the lists consist of?
         self._episodes = 0
         self._timesteps = 0
         
@@ -102,7 +108,8 @@ class BatchBuilder:  # NOTE: Basically a batch with an internal state correspond
             d = {}
             d[Batch.ACTION] = np.asarray(episode.pop(Batch.ACTION), np.int64)
             d[Batch.REWARD] = np.asarray(episode.pop(Batch.REWARD), np.float32)
-            d[Batch.DONE] = np.asarray(episode.pop(Batch.DONE), np.float32)
+            d[Batch.TERMINATED] = np.asarray(episode.pop(Batch.TERMINATED), np.float32)
+            d[Batch.TRUNCATED] = np.asarray(episode.pop(Batch.TRUNCATED), np.float32)
 
             obs_t = np.asarray(episode.pop(Batch.OBS), np.float32)
             d[Batch.OBS] = obs_t[:-1]
@@ -134,7 +141,7 @@ class BatchBuilder:  # NOTE: Basically a batch with an internal state correspond
         
         self._agent_episodes = None
 
-    def step(self, obs, actions, rewards, dones, fetches):
+    def step(self, obs, actions, rewards, terminated, truncated, fetches):
         assert self._agent_episodes is not None, "Must call 'start_episode()' first to start new episode"
         for agent_id in obs.keys():
             episode = self._agent_episodes[agent_id]
@@ -142,7 +149,8 @@ class BatchBuilder:  # NOTE: Basically a batch with an internal state correspond
             episode[Batch.OBS].append(obs[agent_id])
             episode[Batch.ACTION].append(actions[agent_id])
             episode[Batch.REWARD].append(rewards[agent_id])
-            episode[Batch.DONE].append(dones[agent_id])
+            episode[Batch.TERMINATED].append(terminated[agent_id])
+            episode[Batch.TRUNCATED].append(truncated[agent_id])
             
             for key, value in fetches[agent_id].items():                
                 episode[key].append(value)
@@ -203,12 +211,14 @@ def sample(env, policies, num_episodes=128, max_steps=1e6, policy_fn=None):  # N
     for _ in range(num_episodes):
 
         # Initialize episode and episode batch
-        obs = env.reset()
+        obs = env.reset()  # NOTE: Need to fix random seeding
         current_step = 0
+        done = False
 
         agents = {}
         policy_map = {}
-        dones = {}
+        terminated = {}
+        truncated = {}
         for agent_id in obs.keys():
             if policy_fn is not None:
                 policy_id = policy_fn(agent_id)
@@ -217,20 +227,22 @@ def sample(env, policies, num_episodes=128, max_steps=1e6, policy_fn=None):  # N
             
             agents[agent_id] = policies[policy_id].make_agent()
             policy_map[agent_id] = policy_id
-            dones[agent_id] = False
+            terminated[agent_id] = False
+            truncated[agent_id] = False
 
         batch.start_episode(obs, policy_map)
 
         # Rollout episode
-        while current_step < max_steps and not all(dones.values()):
+        while current_step < max_steps and not done:
             actions = {}
             fetches = {}
             for agent_id, ob in obs.items():
                 actions[agent_id], fetches[agent_id] = agents[agent_id].act(ob)
 
-            obs, rewards, dones, _ = env.step(actions)
+            obs, rewards, terminated, truncated, _ = env.step(actions)
+            done = all(terminated.values()) or all(truncated.values())
 
-            batch.step(obs, actions, rewards, dones, fetches)  # NOTE: All data added on a 'per-agent' basis
+            batch.step(obs, actions, rewards, terminated, truncated, fetches)  # NOTE: All data added on a 'per-agent' basis
             current_step += 1
     
         # TODO: Allow actors to do additional postprocessing

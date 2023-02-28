@@ -33,11 +33,11 @@ class IndependentTrainer:
         env_cls = get_env_class(env_name)
 
         # Build environment - get observation and action spaces
-        self._env = env_cls(env_config, spec_only=False)
+        self._env = env_cls(env_config)
         obs_spaces = self._env.observation_spaces
         action_spaces = self._env.action_spaces
 
-        self._eval_env = env_cls(env_eval_config, spec_only=False)
+        self._eval_env = env_cls(env_eval_config)
 
         # Get learner class and config
         if "learner" not in config:

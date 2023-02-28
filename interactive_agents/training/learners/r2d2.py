@@ -281,7 +281,7 @@ class R2D2:
 
         online_q = torch.gather(online_q, -1, batch[Batch.ACTION].unsqueeze(-1)).squeeze(-1)
 
-        q_targets = batch[Batch.REWARD] + self._gamma * (1 - batch[Batch.DONE]) * target_q
+        q_targets = batch[Batch.REWARD] + self._gamma * (1 - batch[Batch.TERMINATED]) * target_q
         q_targets = q_targets.detach()
 
         errors = nn.functional.smooth_l1_loss(online_q, q_targets, beta=self._beta, reduction='none')
@@ -335,7 +335,7 @@ class R2D2:
             for episode in episodes:
                 max_q = episode["q_values"][1:].max(-1)
                 q_targets = episode[Batch.REWARD].copy()
-                q_targets[:-1] += self._gamma * episode[Batch.DONE][:-1] * max_q
+                q_targets[:-1] += self._gamma * episode[Batch.TERMINATED][:-1] * max_q
                 
                 priorities.append(self._priority(episode["action_q"] - q_targets))
 

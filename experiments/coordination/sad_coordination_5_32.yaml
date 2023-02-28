@@ -1,0 +1,37 @@
+sad_coordination_5_32:
+  stop:
+    iterations: 500
+  trainer: sad
+  num_seeds: 4
+  config:
+    max_steps: 100
+    iteration_episodes: 32
+    eval_iterations: 10
+    eval_episodes: 64
+    env: coordination
+    env_config:
+      stages: 32
+      actions: 5
+      players: 2
+    learner_config:
+      num_batches: 16
+      batch_size: 32
+      sync_iterations: 20
+      learning_starts: 20
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 300
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.9
+      replay_beta_iterations: 300
+      buffer_size: 8192
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 64
+        hidden_layers: 1
+      lr: 0.001

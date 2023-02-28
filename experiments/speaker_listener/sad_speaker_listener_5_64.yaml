@@ -1,0 +1,36 @@
+sad_speaker_listener_5_64:
+  stop:
+    iterations: 100
+  trainer: sad
+  num_seeds: 1
+  config:
+    max_steps: 100
+    iteration_episodes: 32
+    eval_iterations: 20
+    eval_episodes: 64
+    env: speaker_listener
+    env_config:
+      stages: 64
+      cues: 5
+    learner_config:
+      num_batches: 16
+      batch_size: 32
+      sync_iterations: 20
+      learning_starts: 20
+      gamma: 0.99
+      beta: 0.5
+      double_q: True
+      epsilon_initial: 0.5
+      epsilon_iterations: 700
+      epsilon_final: 0.01
+      replay_alpha: 0.6
+      replay_epsilon: 0.01
+      replay_eta: 0.9
+      replay_beta_iterations: 700
+      buffer_size: 4096
+      dueling: True
+      model: lstm
+      model_config:
+        hidden_size: 512
+        hidden_layers: 1
+      lr: 0.001

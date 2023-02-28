@@ -20,16 +20,19 @@ class BatchedEnv(SyncEnv):
             self.observation_spaces[agent_id] = self._envs[0].observation_space(agent_id)
             self.action_spaces[agent_id] = self._envs[0].action_space(agent_id)
 
-    def reset(self, seed=None):
-        self.seed(seed)
+    def reset(self, seeds=None):
         self._current_step = 0
 
         self.active_agents = defaultdict(list)
         self._active_envs = []
 
         observations = defaultdict(list)
-        for env in self._envs:
-            obs = env.reset(seed=self.rng.integers(np.iinfo(np.int32).max))
+        for idx, env in enumerate(self._envs):
+            if seeds is not None:
+                obs = env.reset(seed=seeds[idx])
+            else: 
+                obs = env.reset()
+            
             self._active_envs.append(True)
 
             for agent_id in self.possible_agents:
