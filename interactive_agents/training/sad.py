@@ -7,13 +7,12 @@ learning." (Hu et al. 2019).
 Almost identical to the "independent" trainer, but allows
 each player to see the other's exploration and exploitation action
 """
-from gymnasium.spaces import Box, Discrete
+from gymnasium.spaces import Box
 import numpy as np
 import torch
 
 from interactive_agents.envs import get_env_class, BatchedEnv
 from interactive_agents.training.learners.r2d2 import R2D2
-from interactive_agents.training.learners import build_model, priority_tree
 from interactive_agents.sampling import BatchBuilder
 from interactive_agents.stopwatch import Stopwatch
 
