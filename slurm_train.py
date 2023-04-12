@@ -81,7 +81,7 @@ if __name__ == '__main__':
 
     # Initialize experiment directories
     setup_command = [
-        "singularity", 
+        "singularity",  # NOTE: This is now just an alias for "apptainer" 
         "exec",
         "--bind",
         f"{args.output_path}:/mnt/output",
@@ -89,13 +89,14 @@ if __name__ == '__main__':
         "python3", 
         "slurm_setup.py",  # NOTE: This is really not necessary, designed this so we could run without any python dependencies on the login node
         "--output-path",
-        "/mnt/output"
-    ]
+        "/mnt/output"  # NOTE: This overwrites the output path
+    ]  # NOTE: Singularity automatically binds the home directory and current working directory
     setup_command.extend(unknown)  # NOTE: This will pass the command-line arguments that are used by the setup script
 
     setup_process = subprocess.run(setup_command, stdout=subprocess.PIPE)
 
     # NOTE: The script returns, through the container output, a list of paths to folders set-up for each experiment
+    # NOTE: Presumably these are paths "within" the container
     paths = setup_process.stdout.decode("utf-8").splitlines()  # NOTE: Make sure to decode stdout bytestring before parsing it
 
     # NOTE: This is not itself a command to launch SLURM, but a command that will be passed to SLURM to execute
